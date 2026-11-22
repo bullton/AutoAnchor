@@ -1,0 +1,629 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>口播工坊 · 流水线控制台</title>
+  <link rel="stylesheet" href="styles.css" />
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <div class="ambient" aria-hidden="true"></div>
+
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 32 32" fill="none">
+          <circle cx="16" cy="16" r="12" stroke="currentColor" stroke-width="1.4" opacity=".35"/>
+          <path d="M16 4a12 12 0 0 1 12 12" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>
+          <circle cx="16" cy="16" r="3.2" fill="currentColor"/>
+        </svg>
+      </div>
+      <div class="brand-text">
+        <strong>口播工坊</strong>
+        <span>LOCAL CONTROL</span>
+      </div>
+    </div>
+
+    <div class="env-pills" id="envPills"></div>
+
+    <div class="top-actions">
+      <a class="btn ghost" href="/setup">环境设置</a>
+      <span class="save-state" id="saveState">已保存</span>
+      <button class="btn ghost" id="saveBtn" type="button">保存配置</button>
+      <button class="btn primary" id="runBtn" type="button">
+        <span class="btn-dot"></span>开始生成
+      </button>
+      <button class="btn danger hidden" id="cancelBtn" type="button">取消任务</button>
+    </div>
+  </header>
+
+  <div class="shell">
+    <aside class="rail">
+      <div class="rail-label">流程</div>
+      <nav class="nav" id="nav">
+        <button class="nav-item active" data-tab="script" type="button">
+          <span class="nav-num">01</span><span>文案</span>
+        </button>
+        <button class="nav-item" data-tab="voice" type="button">
+          <span class="nav-num">02</span><span>配音</span>
+        </button>
+        <button class="nav-item" data-tab="style" type="button">
+          <span class="nav-num">03</span><span>画面</span>
+        </button>
+        <button class="nav-item" data-tab="run" type="button">
+          <span class="nav-num">04</span><span>运行台</span>
+        </button>
+        <button class="nav-item" data-tab="history" type="button">
+          <span class="nav-num">05</span><span>历史</span>
+        </button>
+      </nav>
+
+      <div class="rail-card">
+        <div class="rail-card-head">
+          <span>当前任务</span>
+          <span class="status-dot" id="railDot"></span>
+        </div>
+        <div class="rail-state" id="railStatus">空闲</div>
+        <div class="rail-stage" id="railStage">等待开始</div>
+        <div class="bar slim"><i id="railBar" style="width:0%"></i></div>
+        <button class="link" data-tab="run" type="button">打开运行台 →</button>
+      </div>
+
+      <div class="rail-foot">
+        <span>本地运行</span>
+        <span class="mono">127.0.0.1</span>
+      </div>
+    </aside>
+
+    <main class="main">
+      <section class="panel active" id="panel-script">
+        <div class="panel-head">
+          <div class="panel-title">
+            <div class="eyebrow">STEP 01 / SCRIPT</div>
+            <h1>文案</h1>
+            <p>一行一句，标点原样保留。数字和百分比会自动转成中文读法。</p>
+          </div>
+          <div class="head-actions">
+            <label class="btn ghost file-btn">
+              导入 txt
+              <input type="file" id="importScript" accept=".txt,text/plain" hidden />
+            </label>
+            <button class="btn ghost" id="templateBtn" type="button">载入示例</button>
+          </div>
+        </div>
+
+        <div class="input-overview card">
+          <div class="card-head">
+            <span>创作输入</span>
+            <span class="mini-tag">文案 · 素材 · 数字人 · 音色</span>
+          </div>
+          <div class="io-grid">
+            <label class="field io-series">
+              <span>系列名</span>
+              <input id="seriesTitle" type="text" maxlength="18" placeholder="留空则自动提炼" />
+            </label>
+            <label class="field io-series">
+              <span>副标题</span>
+              <input id="seriesTagline" type="text" maxlength="28" placeholder="一句话说明这期看点" />
+            </label>
+            <label class="field">
+              <span>数字人参考 / 出镜素材</span>
+              <select id="inputAvatarSelect"><option value="">不使用数字人</option></select>
+            </label>
+            <label class="field">
+              <span>配音音色</span>
+              <select id="inputVoiceSelect"></select>
+            </label>
+            <div class="io-materials">
+              <span>素材与章节</span>
+              <b id="inputMaterialSummary">0 张 · 0 章</b>
+              <button class="btn tiny ghost" data-tab="style" type="button">去整理</button>
+            </div>
+          </div>
+          <p class="io-hint">这些输入会写入本次 Job；也可以直接在 Agent 里用一句话调用同一套流水线。</p>
+        </div>
+
+        <div class="script-layout">
+          <div class="editor-card">
+            <div class="editor-bar">
+              <span class="mono">input/script.txt</span>
+              <span class="muted" id="scriptCount">0 字</span>
+            </div>
+            <textarea id="scriptInput" spellcheck="false" placeholder="把文案粘贴到这里，一行一句……"></textarea>
+            <div class="editor-foot">
+              <span class="muted">建议每句 20–40 字，句内保留逗号。</span>
+              <button class="btn small" id="scriptSaveBtn" type="button">保存文案</button>
+            </div>
+          </div>
+
+          <aside class="side-stack">
+            <div class="card stat-card">
+              <div class="stat-row"><span>句子</span><b id="statSentences">0</b></div>
+              <div class="stat-row"><span>字数</span><b id="statChars">0</b></div>
+              <div class="stat-row"><span>预计时长</span><b id="statDuration">0s</b></div>
+              <div class="stat-row"><span>上次成片</span><b id="statRender">—</b></div>
+              <div class="stat-row"><span>当前方案</span><b id="statProvider">—</b></div>
+            </div>
+
+            <div class="card sentence-card">
+              <div class="card-head">
+                <span>逐句预览</span>
+                <span class="mini-tag">自动分镜</span>
+              </div>
+              <ol class="sentence-list" id="sentenceList"></ol>
+            </div>
+          </aside>
+        </div>
+      </section>
+
+      <section class="panel" id="panel-voice">
+        <div class="panel-head">
+          <div class="panel-title">
+            <div class="eyebrow">STEP 02 / VOICE</div>
+            <h1>配音方案</h1>
+            <p>选择合成引擎与音色。Kaggle 适合正式批量，CosyVoice 在本机更快。</p>
+          </div>
+          <div class="head-note" id="providerHint">—</div>
+        </div>
+
+        <div class="provider-grid" id="providerGrid"></div>
+
+        <div class="voice-layout">
+          <div class="card">
+            <div class="card-head">
+              <span>音色与节奏</span>
+              <span class="mini-tag" id="voiceModeTag">克隆</span>
+            </div>
+
+            <div class="field">
+              <label for="voiceSelect">参考音色</label>
+              <div class="inline">
+                <select id="voiceSelect"></select>
+                <button class="btn small ghost" id="playVoice" type="button">试听</button>
+              </div>
+              <div class="voice-tools">
+                <button class="btn small ghost" id="uploadVoice" type="button">上传音色</button>
+                <span class="voice-hint">支持 wav / mp3 / m4a / flac</span>
+                <input type="file" id="voiceFile" accept=".wav,.mp3,.m4a,.flac,audio/*" hidden />
+              </div>
+              <div class="muted small" id="voiceMeta">—</div>
+              <audio id="voiceAudio" hidden></audio>
+            </div>
+
+            <div class="trim-panel hidden" id="trimPanel">
+              <div class="trim-head">
+                <span>截取参考片段</span>
+                <span class="mini-tag" id="trimTotal">—</span>
+              </div>
+              <div class="trim-track"><span class="trim-range" id="trimRange"></span></div>
+              <div class="trim-row">
+                <div class="range-field">
+                  <div class="range-head"><label for="trimStart">起点</label><b id="trimStartValue">0.0s</b></div>
+                  <input type="range" id="trimStart" min="0" max="10" step="0.1" value="0" />
+                </div>
+                <div class="range-field">
+                  <div class="range-head"><label for="trimLength">长度</label><b id="trimLengthValue">10.0s</b></div>
+                  <input type="range" id="trimLength" min="0.5" max="12" step="0.1" value="10" />
+                </div>
+              </div>
+              <div class="trim-note" id="trimNote">建议 3–10 秒，选人声干净、没有背景音乐的一段。</div>
+              <div class="trim-actions">
+                <button class="btn tiny ghost" id="trimPreview" type="button">试听片段</button>
+                <button class="btn tiny primary" id="trimSave" type="button">保存并使用</button>
+                <button class="btn tiny ghost" id="trimCancel" type="button">取消</button>
+              </div>
+            </div>
+
+            <div class="range-field">
+              <div class="range-head"><label for="gapInput">句间停顿</label><b id="gapValue">0.26s</b></div>
+              <input type="range" id="gapInput" min="0.12" max="0.6" step="0.02" value="0.26" />
+            </div>
+
+            <div class="range-field">
+              <div class="range-head"><label for="leadInput">首句前导</label><b id="leadValue">0.25s</b></div>
+              <input type="range" id="leadInput" min="0" max="0.5" step="0.05" value="0.25" />
+            </div>
+
+            <label class="switch-row">
+              <input type="checkbox" id="tightenInput" checked />
+              <span class="switch"></span>
+              <span>
+                <b>压缩句内碎停顿</b>
+                <small>减少“一个字一个字”的断裂感，发音时长不变</small>
+              </span>
+            </label>
+          </div>
+
+          <div class="card">
+            <div class="card-head"><span>高级参数</span><span class="mini-tag">按方案变化</span></div>
+            <div id="advancedFields" class="advanced-fields"></div>
+          </div>
+
+          <div class="card note-card">
+            <div class="card-head"><span>方案说明</span></div>
+            <p id="providerNote">选择左侧方案后显示。</p>
+            <div class="provider-env" id="providerEnv"></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel" id="panel-style">
+        <div class="panel-head">
+          <div class="panel-title">
+            <div class="eyebrow">STEP 03 / LOOK</div>
+            <h1>画面风格</h1>
+            <p>风格会真正写进成片：配色、字体、动效曲线和进度条一起变化。</p>
+          </div>
+          <div class="head-note">预览为示意，成片为准</div>
+        </div>
+
+        <div class="screen-status" id="screenStatus">
+          <div class="ss-main">
+            <span class="ss-dot" id="storyboardDot"></span>
+            <div>
+              <b id="storyboardState">分镜状态</b>
+              <span id="storyboardDetail">正在读取当前方案…</span>
+            </div>
+          </div>
+          <div class="ss-actions">
+            <label class="check ss-auto"><input type="checkbox" id="autoPrep" checked />保存后自动预生成</label>
+            <button id="storyboardRefresh" class="btn small" type="button">更新分镜</button>
+            <button id="storyboardRetry" class="btn small danger hidden" type="button">重试</button>
+          </div>
+        </div>
+        <div class="prep-progress hidden" id="prepProgress">
+          <div class="prep-head"><span class="prep-spin"></span><b id="prepStage">正在生成分镜…</b><span id="prepHint"></span></div>
+          <div class="bar slim"><i id="prepBar"></i></div>
+          <div class="prep-log" id="prepLog"></div>
+        </div>
+
+        <div class="style-grid" id="styleGrid"></div>
+
+        <div class="card material-card">
+          <div class="card-head"><span>素材与章节</span><span class="card-head-tools"><span class="mini-tag" id="materialSummary">0 张 · 0 章</span><a class="btn tiny ghost" href="/layout-review.html" target="_blank" rel="noopener">排版审阅</a></span></div>
+          <div class="material-toolbar">
+            <label class="btn small file-btn">
+              ＋ 上传图片
+              <input type="file" id="materialFiles" accept="image/png,image/jpeg,image/webp" multiple hidden />
+            </label>
+            <button id="materialRedetect" class="btn tiny ghost" type="button">按文件名重新分章</button>
+            <span class="muted small">文件名示例：冷气篇_01.jpg、02-冷气篇.jpg；也可以直接把素材拖进章节</span>
+          </div>
+          <div class="material-chapters" id="materialChapters"></div>
+          <div class="material-scene-head">
+            <span>分镜预览</span>
+            <span class="muted small" id="materialSceneHint">点右侧分镜切换；配图与布局调整会即时反映在预览里</span>
+          </div>
+          <div class="material-preview" id="materialSceneMap"></div>
+          <div class="scene-layout-editor hidden" id="sceneLayoutEditor"></div>
+        </div>
+
+        <div class="style-layout">
+          <div class="card">
+            <div class="card-head"><span>动效强度</span></div>
+            <div class="segmented" id="motionSeg">
+              <button data-motion="light" type="button">轻</button>
+              <button data-motion="standard" class="active" type="button">标准</button>
+              <button data-motion="strong" type="button">强</button>
+            </div>
+            <div class="muted small motion-note" id="motionNote">位移与弹性适中，适合大多数口播。</div>
+          </div>
+
+          <div class="card layout-card">
+            <div class="card-head"><span>画面布局</span><span class="mini-tag" id="layoutModeTag">纯文案</span></div>
+            <div class="segmented" id="modeSeg">
+              <button data-mode="none" class="active" type="button">纯文案</button>
+              <button data-mode="image" type="button">动画+头像</button>
+              <button data-mode="video" type="button">动画+数字人</button>
+            </div>
+            <div class="dh-block">
+              <label class="switch-row compact">
+                <input type="checkbox" id="dhEnabled" />
+                <span class="switch"></span>
+                <span>
+                  <b>Kaggle 生成口型数字人</b>
+                  <small>配音完成后，用上方“数字人参考”视频生成对口型片段，再自动进入动画与成片。</small>
+                </span>
+              </label>
+              <div class="two-fields dh-fields" id="dhFields">
+                <div class="field">
+                  <label for="dhVariant">数字人版本</label>
+                  <select id="dhVariant">
+                    <option value="closeup">半身近景</option>
+                    <option value="fullbody">全身</option>
+                    <option value="auto">自动选择</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label for="dhTimeout">等待上限</label>
+                  <select id="dhTimeout">
+                    <option value="60">60 分钟</option>
+                    <option value="120">120 分钟</option>
+                    <option value="180">180 分钟</option>
+                  </select>
+                </div>
+              </div>
+              <p class="io-hint" id="dhHint">选择视频素材后可开启。首次运行需在 Kaggle 完成依赖安装，约 40–55 分钟。</p>
+            </div>
+            <div id="avatarFields" class="avatar-fields hidden">
+              <div class="avatar-source">
+                <label class="avatar-upload" for="avatarFile">
+                  <input type="file" id="avatarFile" accept="image/png,image/jpeg,image/webp,video/mp4,video/webm,video/quicktime" hidden />
+                  <span>＋ 上传素材</span>
+                </label>
+                <select id="avatarSelect"><option value="">选择已有素材</option></select>
+              </div>
+              <div class="range-field">
+                <div class="range-head"><label for="avatarWidth">头像占比</label><b id="avatarWidthValue">34%</b></div>
+                <input type="range" id="avatarWidth" min="12" max="70" step="1" value="34" />
+              </div>
+              <div class="avatar-grid-row">
+                <div class="anchor-grid" id="anchorGrid">
+                  <button data-x="0.18" data-y="0.2" type="button" aria-label="左上"></button>
+                  <button data-x="0.5" data-y="0.2" type="button" aria-label="上"></button>
+                  <button data-x="0.82" data-y="0.2" type="button" aria-label="右上"></button>
+                  <button data-x="0.18" data-y="0.5" type="button" aria-label="左"></button>
+                  <button data-x="0.5" data-y="0.5" type="button" aria-label="中"></button>
+                  <button data-x="0.82" data-y="0.5" type="button" aria-label="右"></button>
+                  <button data-x="0.18" data-y="0.78" type="button" aria-label="左下"></button>
+                  <button data-x="0.5" data-y="0.78" type="button" aria-label="下"></button>
+                  <button data-x="0.82" data-y="0.78" type="button" aria-label="右下"></button>
+                </div>
+                <div class="anchor-fields">
+                  <div class="range-field compact">
+                    <div class="range-head"><label for="avatarX">水平</label><b id="avatarXValue">50%</b></div>
+                    <input type="range" id="avatarX" min="0" max="100" step="1" value="50" />
+                  </div>
+                  <div class="range-field compact">
+                    <div class="range-head"><label for="avatarY">垂直</label><b id="avatarYValue">76%</b></div>
+                    <input type="range" id="avatarY" min="0" max="100" step="1" value="76" />
+                  </div>
+                  <div class="range-field compact">
+                    <div class="range-head"><label for="avatarGap">避让间距</label><b id="avatarGapValue">24px</b></div>
+                    <input type="range" id="avatarGap" min="0" max="80" step="4" value="24" />
+                  </div>
+                </div>
+              </div>
+              <div class="two-fields">
+                <div class="field">
+                  <label for="avatarShape">裁切形状</label>
+                  <select id="avatarShape">
+                    <option value="rounded">圆角</option>
+                    <option value="circle">圆形</option>
+                    <option value="ellipse">椭圆</option>
+                    <option value="square">方形</option>
+                    <option value="diamond">菱形</option>
+                    <option value="hexagon">六边形</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label for="avatarMotion">动效</label>
+                  <select id="avatarMotion">
+                    <option value="float">轻微浮动</option>
+                    <option value="breathe">呼吸缩放</option>
+                    <option value="none">静止</option>
+                  </select>
+                </div>
+              </div>
+              <div class="two-fields border-fields">
+                <div class="range-field compact">
+                  <div class="range-head"><label for="borderWidth">描边粗细</label><b id="borderWidthValue">4px</b></div>
+                  <input type="range" id="borderWidth" min="0" max="24" step="1" value="4" />
+                </div>
+                <div class="field">
+                  <label for="borderColor">描边颜色</label>
+                  <div class="color-field">
+                    <input type="color" id="borderColor" value="#e8a33d" />
+                    <span id="borderColorValue">#E8A33D</span>
+                  </div>
+                </div>
+              </div>
+              <label class="check inline-check"><input type="checkbox" id="frameInput" checked />头像投影</label>
+              <label class="check inline-check"><input type="checkbox" id="avoidInput" checked />文字与字幕自动避让头像</label>
+            </div>
+            <div class="preset-block">
+              <div class="preset-head">
+                <span class="muted small">布局预设</span>
+                <button id="presetSave" class="btn tiny ghost" type="button">保存为预设</button>
+              </div>
+              <div class="preset-row">
+                <select id="presetSelect"><option value="">选择预设</option></select>
+                <button id="presetApply" class="btn tiny" type="button">套用</button>
+                <button id="presetDelete" class="btn tiny ghost" type="button">删除</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-head"><span>AI 分镜</span><span class="mini-tag" id="aiState">未启用</span></div>
+            <label class="switch-row">
+              <input type="checkbox" id="aiEnabled" />
+              <span class="switch"></span>
+              <span>
+                <b>启用 AI 分镜</b>
+                <small>按文案自动切幕、挑版式、给配图检索词；调用失败自动回退规则版</small>
+              </span>
+            </label>
+            <div class="ai-grid">
+              <div class="field wide">
+                <label for="aiBaseUrl">接口地址</label>
+                <input type="text" id="aiBaseUrl" class="mono" placeholder="https://api.openai.com/v1" />
+              </div>
+              <div class="field">
+                <label for="aiModel">模型</label>
+                <input type="text" id="aiModel" placeholder="gpt-4o-mini" />
+              </div>
+              <div class="field">
+                <label for="aiKeyEnv">Key 环境变量名（可选）</label>
+                <input type="text" id="aiKeyEnv" class="mono" placeholder="OPENAI_API_KEY" />
+              </div>
+              <div class="field wide">
+                <label for="aiApiKey">API Key</label>
+                <input type="password" id="aiApiKey" class="mono" placeholder="直接粘贴密钥，或留空改用环境变量" autocomplete="off" />
+              </div>
+              <div class="range-field wide">
+                <div class="range-head"><label for="aiTemperature">温度</label><b id="aiTemperatureValue">0.40</b></div>
+                <input type="range" id="aiTemperature" min="0" max="1" step="0.05" value="0.4" />
+              </div>
+            </div>
+            <p class="muted small ai-note">兼容 OpenAI 协议的服务都能用：DeepSeek、通义、Ollama 等只需改接口地址与模型名。Key 取环境变量，未设置时回退规则版。</p>
+          </div>
+
+          <div class="card preview-card">
+            <div class="card-head"><span>风格预览</span><span class="mini-tag" id="previewStyleName">暗金纪事</span></div>
+            <div class="phone" id="stylePreview">
+              <div class="phone-top"><span></span><span></span><span></span></div>
+              <div class="phone-stage">
+                <div class="preview-kicker" id="previewKicker">CASE REVIEW</div>
+                <div class="preview-title" id="previewTitle">终端运维自动化<br />到底能省多少成本</div>
+                <div class="preview-rule"></div>
+                <div class="preview-caption">一组真实数据，拆开看。</div>
+              </div>
+              <div class="preview-avatar hidden" id="previewAvatar">
+                <span class="preview-avatar-empty" id="previewAvatarEmpty">头像 / 数字人</span>
+              </div>
+              <div class="preview-safe hidden" id="previewSafe"></div>
+              <div class="phone-progress"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="motion-lab card">
+          <div class="card-head">
+            <span>AI 动画</span>
+            <span class="mini-tag" id="motionLabState">手动描述或选择预设</span>
+          </div>
+          <div class="motion-stale hidden" id="motionStale"></div>
+          <div class="motion-auto-row">
+            <button id="motionAuto" class="btn" type="button">AI 自动编排全片</button>
+            <span class="motion-theme" id="motionTheme">AI 会先判断主题，再逐幕分配动效</span>
+          </div>
+          <div class="motion-lab-grid">
+            <div class="motion-prompt-col">
+              <label class="field-label" for="motionPrompt">补充要求（自动编排或重排本幕，可留空）</label>
+              <textarea id="motionPrompt" rows="3" placeholder="留空时 AI 直接读整篇文案判断主题并逐幕编排。也可补充，例如：整体克制一点，数据段要有扫描感，结尾放慢"></textarea>
+              <div class="motion-chips" id="motionChips"></div>
+              <div class="motion-actions">
+                <button id="motionReset" class="btn tiny ghost" type="button">撤销应用</button>
+                <span class="muted small" id="motionHint">自动编排会给每一幕不同的动效，相邻幕不会重复。</span>
+              </div>
+            </div>
+            <div class="motion-target-col">
+              <div class="field">
+                <label for="motionScene">作用到哪一幕</label>
+                <select id="motionScene"></select>
+              </div>
+              <button id="motionRegenerate" class="btn tiny ghost" type="button">AI 重排本幕</button>
+              <div class="segmented" id="motionScope">
+                <button data-scope="scene" class="active" type="button">当前幕</button>
+                <button data-scope="all" type="button">全部幕</button>
+              </div>
+              <button id="motionPreview" class="btn tiny ghost" type="button">渲染真实预览（3 帧）</button>
+              <div class="motion-current" id="motionCurrent">当前未应用动效</div>
+            </div>
+          </div>
+          <div class="motion-plan hidden" id="motionPlan"></div>
+          <div class="motion-candidates" id="motionCandidates"></div>
+          <div class="motion-frames hidden" id="motionFrames"></div>
+        </div>
+      </section>
+
+      <section class="panel" id="panel-run">
+        <div class="panel-head">
+          <div class="panel-title">
+            <div class="eyebrow">STEP 04 / RUNTIME</div>
+            <h1>运行台</h1>
+            <p>五阶段串联执行，日志实时回传。运行中可以取消。</p>
+          </div>
+          <div class="head-note run-head-tools">
+            <span id="runStatus">空闲</span>
+            <button class="btn tiny ghost" id="restartBtn" type="button">从头生成</button>
+          </div>
+        </div>
+
+        <div class="run-card card">
+          <div class="run-head">
+            <div>
+              <div class="eyebrow">CURRENT RUN</div>
+              <h2 id="runTitle">尚未开始</h2>
+              <div class="run-sub">
+                <span id="runNote">在文案、配音、画面配置好后开始生成。</span>
+              </div>
+            </div>
+            <div class="run-meta">
+              <div><span>方案</span><b id="runProvider">—</b></div>
+              <div><span>风格</span><b id="runStyle">—</b></div>
+              <div><span>时长</span><b id="runDuration">—</b></div>
+              <div><span>大小</span><b id="runSize">—</b></div>
+            </div>
+          </div>
+
+          <div class="run-progress">
+            <div class="bar big"><i id="runBar" style="width:0%"></i></div>
+            <span class="run-pct" id="runPct">0%</span>
+          </div>
+
+          <div class="stage-grid" id="stageGrid"></div>
+        </div>
+
+        <div class="run-layout">
+          <div class="card log-card">
+            <div class="log-head">
+              <div class="card-head"><span>实时日志</span><span class="live-dot" id="liveDot"></span></div>
+              <div class="log-tools">
+                <select id="logFilter" aria-label="日志级别">
+                  <option value="all">全部</option>
+                  <option value="info">信息</option>
+                  <option value="warn">警告</option>
+                  <option value="error">错误</option>
+                </select>
+                <input id="logSearch" type="search" placeholder="搜索日志" aria-label="搜索日志" />
+                <label class="check"><input type="checkbox" id="autoScroll" checked />跟随</label>
+                <a class="btn tiny ghost" id="logDownload" href="#" download>下载</a>
+                <button class="btn tiny ghost" id="clearLog" type="button">清屏</button>
+              </div>
+            </div>
+            <pre id="logView" class="log-view"><span class="log-empty">等待任务开始……</span></pre>
+          </div>
+
+          <div class="card result-card">
+            <div class="card-head"><span>成片</span><span class="mini-tag" id="resultTag">—</span></div>
+            <div class="result-empty" id="resultEmpty">
+              <div class="empty-mark">9:16</div>
+              <p>生成完成后在这里直接播放。</p>
+            </div>
+            <video id="resultVideo" class="result-video hidden" controls playsinline></video>
+            <div class="result-meta" id="resultMeta"></div>
+            <div class="result-actions">
+              <button class="btn small ghost" id="openFolder" type="button">打开文件夹</button>
+              <a class="btn small primary hidden" id="downloadVideo" href="#" download>下载成片</a>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel" id="panel-history">
+        <div class="panel-head">
+          <div class="panel-title">
+            <div class="eyebrow">STEP 05 / ARCHIVE</div>
+            <h1>历史</h1>
+            <p>每次运行都会保留配置快照、日志和成片，方便回看与复现。</p>
+          </div>
+          <div class="head-actions">
+            <button class="btn ghost" id="refreshHistory" type="button">刷新</button>
+          </div>
+        </div>
+        <div class="history-list" id="historyList"></div>
+      </section>
+    </main>
+  </div>
+
+  <div class="offline-banner hidden" id="offlineBanner">
+    <b>未连接本地控制台服务</b>
+    <span>当前为界面预览。启动服务后即可保存配置、生成视频和查看日志。</span>
+  </div>
+
+  <div class="toasts" id="toasts" aria-live="polite"></div>
+</body>
+</html>

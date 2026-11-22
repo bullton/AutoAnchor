@@ -1,0 +1,25 @@
+{
+  "name": "oral-video-studio",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "口播工坊：文案、素材、数字人参考与本地配音一体化的竖屏视频流水线",
+  "scripts": {
+    "start": "node server.mjs",
+    "setup": "node setup.mjs",
+    "doctor": "node doctor.mjs",
+    "agent": "node agent/run.mjs",
+    "make": "node pipeline/run.mjs",
+    "storyboard": "node pipeline/01_storyboard.mjs",
+    "tts": "node pipeline/02_tts.mjs",
+    "digital": "node pipeline/digital_human.mjs",
+    "timeline": "node pipeline/03_timeline.mjs",
+    "render": "node pipeline/04_render.mjs",
+    "compose": "node pipeline/05_compose.mjs",
+    "studio": "npm --prefix remotion run studio",
+    "install:remotion": "npm --prefix remotion install"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

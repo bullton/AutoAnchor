@@ -1,0 +1,59 @@
+{
+  "version": 1,
+  "setupCompleted": false,
+  "source": "manual",
+  "paths": {
+    "python": ".venv/Scripts/python.exe",
+    "ffmpeg": "ffmpeg",
+    "ffprobe": "ffprobe",
+    "chrome": "C:/Program Files/Google/Chrome/Application/chrome.exe",
+    "modelsRoot": "models",
+    "vendorRoot": "vendor",
+    "cosyvoiceVendor": "vendor/CosyVoice",
+    "cosyvoiceModel": "models/CosyVoice2-0.5B",
+    "voiceStudioRoot": "vendor/VoiceStudio",
+    "indexttsRepo": "",
+    "indexttsPython": "",
+    "indexttsModel": "",
+    "kagglePython": "pipeline/tts/.venv-kaggle/Scripts/python.exe",
+    "kaggleBin": "pipeline/tts/.venv-kaggle/Scripts/kaggle.exe",
+    "kaggleConfigDir": "config/.kaggle",
+    "voiceRef": "assets/voice-ref"
+  },
+  "kaggle": {
+    "username": "",
+    "key": "",
+    "token": "",
+    "cli": "",
+    "dataset": "",
+    "kernel": "latentsync-dual",
+    "accelerator": "NvidiaTeslaT4",
+    "timeoutMin": 120
+  },
+  "tts": {
+    "provider": "voicestudio",
+    "voicestudio": {
+      "apiBase": "http://127.0.0.1:3900",
+      "refWav": "assets/voice-ref/0226_prompt.wav"
+    },
+    "indextts": {
+      "refWav": "assets/voice-ref/0226_prompt.wav"
+    },
+    "cosyvoice": {
+      "refWav": "assets/voice-ref/0226_prompt.wav"
+    },
+    "local3": {
+      "refWav": "assets/voice-ref/0226_prompt.wav"
+    }
+  },
+  "ai": {
+    "enabled": false,
+    "baseUrl": "https://api.openai.com/v1",
+    "model": "gpt-4o-mini",
+    "keyEnv": "OPENAI_API_KEY",
+    "apiKey": "",
+    "temperature": 0.4,
+    "maxTokens": 2400,
+    "extraPrompt": ""
+  }
+}

@@ -1,0 +1,48 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Oral Video Job Spec",
+  "type": "object",
+  "properties": {
+    "script": { "type": "string", "description": "完整文案，一行一句" },
+    "scriptFile": { "type": "string", "description": "项目内文案文件，和 script 二选一" },
+    "seriesTitle": { "type": "string", "maxLength": 40 },
+    "seriesTagline": { "type": "string", "maxLength": 80 },
+    "provider": {
+      "type": "string",
+      "enum": ["voicestudio", "local3", "cosyvoice", "indextts", "kaggle", "edge"]
+    },
+    "voice": { "type": "string", "description": "assets/voice-ref 下的参考音频文件名" },
+    "styleId": { "type": "string", "enum": ["amber", "tech", "paper", "mono"] },
+    "motion": { "type": "string", "enum": ["light", "standard", "strong"] },
+    "gapSeconds": { "type": "number", "minimum": 0.12, "maximum": 0.6 },
+    "leadIn": { "type": "number", "minimum": 0, "maximum": 0.5 },
+    "tighten": { "type": "boolean" },
+    "aiBrief": { "type": "string", "maxLength": 800, "description": "给分镜模型的补充要求，会开启 AI 分镜" },
+    "ai": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "brief": { "type": "string" },
+        "temperature": { "type": "number" }
+      }
+    },
+    "layout": { "type": "object", "description": "可选，头像布局覆盖" },
+    "digitalHuman": {
+      "type": "object",
+      "description": "可选，Kaggle LatentSync 数字人阶段；开启后自动把布局切到 video",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "reference": { "type": "string", "description": "项目内参考视频路径，例如 assets/avatar/ref.mp4" },
+        "variant": { "type": "string", "enum": ["closeup", "fullbody", "auto"] },
+        "maxSide": { "type": "number", "minimum": 480, "maximum": 2160 },
+        "timeoutMin": { "type": "number", "minimum": 10, "maximum": 360 },
+        "cropPct": { "type": "string", "pattern": "^\\d{1,3}:\\d{1,3}:\\d{1,3}:\\d{1,3}$" }
+      }
+    },
+    "tts": { "type": "object", "description": "可选，按 provider 覆盖配音参数" },
+    "resume": { "type": "boolean", "default": true },
+    "forceStoryboard": { "type": "boolean", "default": false },
+    "forceAll": { "type": "boolean", "default": false }
+  },
+  "anyOf": [{ "required": ["script"] }, { "required": ["scriptFile"] }]
+}

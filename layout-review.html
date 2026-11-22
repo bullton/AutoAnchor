@@ -1,0 +1,709 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>排版审阅</title>
+  <style>
+    :root {
+      --bg: #0E1116;
+      --panel: #11161e;
+      --panel-2: #151b24;
+      --panel-3: #1a212c;
+      --line: rgba(245, 241, 234, 0.1);
+      --ink: #F5F1EA;
+      --dim: rgba(245, 241, 234, 0.62);
+      --faint: rgba(245, 241, 234, 0.36);
+      --accent: #e8a33d;
+      --accent-soft: rgba(232, 163, 61, 0.14);
+      --ok: #67c58b;
+      --danger: #ef6b6b;
+      --radius: 14px;
+      --font: "Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC", "Noto Sans SC", sans-serif;
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background:
+        radial-gradient(90% 55% at 78% 4%, rgba(232, 163, 61, 0.1) 0%, transparent 58%),
+        var(--bg);
+      font-family: var(--font);
+      min-width: 980px;
+    }
+    button, input { font: inherit; }
+    button { cursor: pointer; }
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      display: flex;
+      align-items: center;
+      gap: 18px;
+      padding: 14px 22px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(10, 13, 18, 0.9);
+      backdrop-filter: blur(14px);
+    }
+    .brand { display: flex; align-items: baseline; gap: 14px; min-width: 0; }
+    .brand b { font-size: 18px; letter-spacing: 2px; }
+    .brand span { color: var(--faint); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .top-actions { margin-left: auto; display: flex; align-items: center; gap: 10px; color: var(--faint); font-size: 12px; }
+    .btn {
+      padding: 6px 12px;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      background: transparent;
+      color: var(--ink);
+      text-decoration: none;
+      line-height: 1.3;
+    }
+    .btn:hover { border-color: rgba(232, 163, 61, 0.5); color: var(--accent); }
+    .btn.accent { border-color: rgba(232, 163, 61, 0.55); background: var(--accent-soft); color: var(--accent); }
+    .app {
+      display: grid;
+      grid-template-columns: 190px minmax(360px, 1fr) 340px;
+      gap: 18px;
+      padding: 18px 22px 26px;
+      max-width: 1500px;
+      margin: 0 auto;
+      align-items: start;
+    }
+    .panel {
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--panel);
+      box-shadow: 0 1px 0 rgba(255, 255, 255, 0.02) inset;
+    }
+    .scenes { padding: 12px; position: sticky; top: 78px; }
+    .panel-title { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0 0 10px; font-size: 11px; letter-spacing: 0.14em; color: var(--faint); text-transform: uppercase; }
+    .scene-list { display: flex; flex-direction: column; gap: 10px; max-height: calc(100vh - 150px); overflow: auto; padding-right: 2px; }
+    .scene-card {
+      display: flex; gap: 9px; align-items: center; width: 100%; padding: 6px; text-align: left;
+      border: 1px solid transparent; border-radius: 9px; background: transparent; color: var(--ink);
+    }
+    .scene-card:hover { background: rgba(255, 255, 255, 0.03); }
+    .scene-card.active { border-color: rgba(232, 163, 61, 0.5); background: var(--accent-soft); }
+    .thumb { flex: none; width: 62px; height: 110px; overflow: hidden; border-radius: 5px; background: #05070a; border: 1px solid var(--line); }
+    .thumb-canvas { width: 1080px; height: 1920px; transform: scale(0.0574); transform-origin: top left; }
+    .scene-copy { min-width: 0; }
+    .scene-copy b { display: block; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .scene-copy span { display: block; margin-top: 3px; font-size: 9px; color: var(--faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .scene-copy em { display: inline-block; margin-top: 4px; font-style: normal; font-size: 8px; padding: 1px 5px; border-radius: 999px; color: var(--accent); border: 1px solid rgba(232, 163, 61, 0.32); }
+    .workspace { min-width: 0; }
+    .stage-shell { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 16px; }
+    .stage {
+      position: relative;
+      height: min(76vh, 840px);
+      aspect-ratio: 9 / 16;
+      width: auto;
+      max-width: 100%;
+      overflow: hidden;
+      border-radius: 16px;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      background: #05070a;
+      box-shadow: 0 28px 80px rgba(0, 0, 0, 0.5);
+    }
+    .canvas { position: absolute; left: 0; top: 0; width: 1080px; height: 1920px; transform-origin: top left; overflow: hidden; }
+    .stage-meta { display: flex; gap: 10px; align-items: center; font-size: 11px; color: var(--faint); }
+    .stage-meta b { color: var(--dim); font-weight: 600; }
+    .notice { width: 100%; max-width: 560px; padding: 9px 12px; border: 1px solid rgba(232, 163, 61, 0.25); border-radius: 8px; background: rgba(232, 163, 61, 0.06); color: var(--dim); font-size: 11px; line-height: 1.5; }
+    .notice.hidden { display: none; }
+    .side { display: flex; flex-direction: column; gap: 14px; position: sticky; top: 78px; max-height: calc(100vh - 100px); overflow: auto; padding-right: 2px; }
+    .side .panel { padding: 13px; }
+    .field { display: flex; flex-direction: column; gap: 5px; margin-top: 10px; font-size: 11px; color: var(--dim); }
+    .field > span { display: flex; justify-content: space-between; gap: 8px; }
+    .field output { color: var(--accent); font-variant-numeric: tabular-nums; }
+    .field input[type="range"] { width: 100%; accent-color: var(--accent); }
+    .seg { display: flex; gap: 6px; flex-wrap: wrap; }
+    .seg button {
+      flex: 1; min-width: 72px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 7px;
+      background: transparent; color: var(--dim); font-size: 11px;
+    }
+    .seg button.active { border-color: rgba(232, 163, 61, 0.55); color: var(--accent); background: var(--accent-soft); }
+    .split { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
+    .align-row { display: flex; gap: 6px; margin-top: 10px; }
+    .align-row button { flex: 1; padding: 5px; border: 1px solid var(--line); border-radius: 6px; background: transparent; color: var(--dim); font-size: 10px; }
+    .align-row button.active { border-color: rgba(232, 163, 61, 0.55); color: var(--accent); background: var(--accent-soft); }
+    .actions { display: flex; gap: 8px; margin-top: 12px; }
+    .actions .btn { flex: 1; text-align: center; }
+    .tpl-save { display: flex; gap: 7px; margin-bottom: 10px; }
+    .tpl-save input {
+      min-width: 0; flex: 1; padding: 6px 9px; border: 1px solid var(--line); border-radius: 7px;
+      background: var(--panel-2); color: var(--ink); outline: none;
+    }
+    .tpl-save input:focus { border-color: rgba(232, 163, 61, 0.55); }
+    .tpl-list { display: flex; flex-direction: column; gap: 8px; max-height: 330px; overflow: auto; }
+    .tpl-item { display: flex; align-items: center; gap: 8px; padding: 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel-2); }
+    .tpl-copy { min-width: 0; flex: 1; }
+    .tpl-copy b { display: block; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .tpl-copy span { display: block; margin-top: 2px; font-size: 9px; color: var(--faint); }
+    .tpl-item button { padding: 4px 7px; border: 1px solid var(--line); border-radius: 5px; background: transparent; color: var(--dim); font-size: 9px; }
+    .tpl-item button:hover { color: var(--accent); border-color: rgba(232, 163, 61, 0.45); }
+    .tpl-item button.danger:hover { color: var(--danger); border-color: rgba(239, 107, 107, 0.45); }
+    .empty { padding: 14px 8px; text-align: center; color: var(--faint); font-size: 11px; }
+    .muted { color: var(--faint); }
+    @media (max-width: 1180px) {
+      .app { grid-template-columns: 160px minmax(330px, 1fr) 310px; }
+    }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <b>排版审阅</b>
+      <span id="seriesMeta">读取分镜中…</span>
+    </div>
+    <div class="top-actions">
+      <span id="status">不生成视频，直接审阅静态排版</span>
+      <button type="button" class="btn" id="refresh">刷新</button>
+      <a class="btn" href="/">返回主界面</a>
+    </div>
+  </header>
+
+  <main class="app">
+    <aside class="panel scenes">
+      <div class="panel-title"><span>分镜</span><span id="sceneCount"></span></div>
+      <div class="scene-list" id="sceneList"></div>
+    </aside>
+
+    <section class="workspace panel stage-shell">
+      <div class="notice hidden" id="notice"></div>
+      <div class="stage" id="stage"><div class="canvas" id="canvas"></div></div>
+      <div class="stage-meta">
+        <b id="stageTitle">—</b>
+        <span id="stageSub"></span>
+      </div>
+    </section>
+
+    <aside class="side">
+      <section class="panel">
+        <div class="panel-title"><span>布局</span><span class="muted" id="layoutKey"></span></div>
+        <div class="seg" id="presets">
+          <button type="button" data-preset="full">满屏</button>
+          <button type="button" data-preset="top">上图下文</button>
+          <button type="button" data-preset="left">左图右文</button>
+        </div>
+        <div class="split">
+          <label class="field"><span>图片大小<output id="out-photoScale"></output></span><input type="range" min="100" max="180" step="1" data-field="photoScale" /></label>
+          <label class="field"><span>图片左右<output id="out-photoX"></output></span><input type="range" min="0" max="100" step="1" data-field="photoX" /></label>
+          <label class="field"><span>图片上下<output id="out-photoY"></output></span><input type="range" min="0" max="100" step="1" data-field="photoY" /></label>
+          <label class="field"><span>内容左右<output id="out-contentX"></output></span><input type="range" min="0" max="100" step="1" data-field="contentX" /></label>
+        </div>
+        <label class="field"><span>内容上下<output id="out-contentY"></output></span><input type="range" min="0" max="100" step="1" data-field="contentY" /></label>
+        <div class="align-row" id="alignRow">
+          <button type="button" data-align="left">左对齐</button>
+          <button type="button" data-align="center">居中</button>
+          <button type="button" data-align="right">右对齐</button>
+        </div>
+        <div class="actions">
+          <button type="button" class="btn" id="reset">恢复默认</button>
+          <button type="button" class="btn accent" id="saveNow">保存布局</button>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-title"><span>布局模板</span><span class="muted" id="templateCount"></span></div>
+        <div class="tpl-save">
+          <input id="templateName" maxlength="40" placeholder="模板名称，例如：雪夜满屏" />
+          <button type="button" class="btn accent" id="saveTemplate">保存模板</button>
+        </div>
+        <div class="tpl-list" id="templateList"></div>
+      </section>
+    </aside>
+  </main>
+
+  <script>
+    const W = 1080;
+    const H = 1920;
+    const SIDE = 66;
+    const SAFE_BOTTOM = 380;
+    const DEFAULTS = {
+      full: { photoScale: 1, photoX: 50, photoY: 42, contentX: 0, contentY: 75, contentAlign: "left" },
+      top: { photoScale: 1, photoX: 50, photoY: 42, contentX: 0, contentY: 0, contentAlign: "left" },
+      left: { photoScale: 1, photoX: 50, photoY: 42, contentX: 0, contentY: 0, contentAlign: "left" }
+    };
+    const state = {
+      scenes: [],
+      meta: {},
+      layout: { mode: "none" },
+      templates: [],
+      selectedId: "",
+      draft: null,
+      saveTimer: 0,
+      statusTimer: 0
+    };
+
+    const $ = (selector) => document.querySelector(selector);
+    const esc = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => ({
+      "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+    }[char]));
+
+    function clamp(value, min, max, fallback) {
+      const n = Number(value);
+      if (!Number.isFinite(n)) return fallback;
+      return Math.min(max, Math.max(min, n));
+    }
+
+    function normalizeStyle(raw, presetFallback = "full") {
+      const preset = raw && (raw.preset === "top" || raw.preset === "left") ? raw.preset : presetFallback === "top" || presetFallback === "left" ? presetFallback : "full";
+      const base = DEFAULTS[preset];
+      return {
+        preset,
+        photoScale: Math.round(clamp(raw?.photoScale, 1, 1.8, base.photoScale) * 100) / 100,
+        photoX: Math.round(clamp(raw?.photoX, 0, 100, base.photoX)),
+        photoY: Math.round(clamp(raw?.photoY, 0, 100, base.photoY)),
+        contentX: Math.round(clamp(raw?.contentX, 0, 100, base.contentX)),
+        contentY: Math.round(clamp(raw?.contentY, 0, 100, base.contentY)),
+        contentAlign: raw?.contentAlign === "center" || raw?.contentAlign === "right" ? raw.contentAlign : base.contentAlign
+      };
+    }
+
+    function selectedScene() {
+      return state.scenes.find((scene) => scene.id === state.selectedId) || null;
+    }
+
+    function isMaterialScene(scene) {
+      return Boolean(scene && scene.photoSource === "material" && scene.layout !== "closing");
+    }
+
+    function mediaPhoto(src) {
+      const name = String(src || "").split(/[\\/]/).pop();
+      return name ? "/media/photos/" + encodeURIComponent(name) : "";
+    }
+
+    function mediaAvatar(src) {
+      const name = String(src || "").split(/[\\/]/).pop();
+      return name ? "/media/avatar/" + encodeURIComponent(name) : "";
+    }
+
+    function shapeRatio(shape, aspect) {
+      if (shape === "ellipse") return 1 / 1.22;
+      if (shape === "hexagon") return 1 / 0.92;
+      if (shape === "rounded") return clamp(aspect, 0.2, 3, 0.75);
+      return 1;
+    }
+
+    function safeBox(layout) {
+      const box = { left: SIDE, right: SIDE, top: 0, bottom: SAFE_BOTTOM };
+      let contentBottom = SAFE_BOTTOM;
+      const avatar = layout?.avatar;
+      const hasAvatar = layout?.mode !== "none" && Boolean(avatar && avatar.src);
+      if (!hasAvatar || layout.avoid === false) {
+        return { ...box, contentBottom };
+      }
+      const width = Math.max(0, Math.min(W, (Number(avatar.width) || 0.34) * W));
+      const ratio = shapeRatio(avatar.shape || "rounded", Number(avatar.aspect) || 0.75);
+      const height = width / ratio;
+      const cx = Math.min(W, Math.max(0, (Number(avatar.x) || 0.5) * W));
+      const cy = Math.min(H, Math.max(0, (Number(avatar.y) || 0.76) * H));
+      const rect = { left: cx - width / 2, top: cy - height / 2, width, height };
+      const offCenter = cx <= W * 0.46 || cx >= W * 0.54;
+      const overlapsTextBand = rect.top < H * 0.62 && rect.top + height > H * 0.18;
+      const sideBySide = width < W * 0.56 && offCenter && overlapsTextBand;
+      const gap = Math.max(0, Number(layout.gap) || 0);
+      if (sideBySide) {
+        if (cx <= W * 0.46) box.left = Math.max(box.left, rect.left + width + gap);
+        else box.right = Math.max(box.right, W - rect.left + gap);
+        contentBottom = Math.max(SAFE_BOTTOM, Math.round(H - rect.top + gap));
+      } else if (cy <= H * 0.5) {
+        box.top = Math.max(box.top, rect.top + height + gap);
+      } else {
+        box.bottom = Math.max(box.bottom, H - rect.top + gap);
+      }
+      const maxInset = W * 0.42;
+      box.left = Math.min(box.left, maxInset);
+      box.right = Math.min(box.right, maxInset);
+      contentBottom = Math.max(contentBottom, box.bottom);
+      return { ...box, contentBottom };
+    }
+
+    function renderAvatar(layout) {
+      const avatar = layout?.avatar;
+      if (!layout || layout.mode === "none" || !avatar || !avatar.src) return "";
+      const width = Math.max(0, Math.min(W, (Number(avatar.width) || 0.34) * W));
+      const ratio = shapeRatio(avatar.shape || "rounded", Number(avatar.aspect) || 0.75);
+      const height = width / ratio;
+      const cx = Math.min(W, Math.max(0, (Number(avatar.x) || 0.5) * W));
+      const cy = Math.min(H, Math.max(0, (Number(avatar.y) || 0.76) * H));
+      const radius = avatar.shape === "circle" || avatar.shape === "square" ? "50%" : "18%";
+      const borderWidth = Number(avatar.borderWidth) || 0;
+      const border = avatar.frame === false ? "none" : borderWidth + "px solid " + (avatar.borderColor || "#e8a33d");
+      return '<div style="position:absolute;left:' + (cx - width / 2) + 'px;top:' + (cy - height / 2) + 'px;width:' + width + 'px;height:' + height + 'px;border-radius:' + radius + ';overflow:hidden;border:' + border + ';background:#11161e;z-index:70;box-shadow:0 18px 40px rgba(0,0,0,0.38)">' +
+        '<img src="' + mediaAvatar(avatar.src) + '" style="width:100%;height:100%;object-fit:' + (avatar.fit === "cover" ? "cover" : "contain") + '" alt="" />' +
+        '</div>';
+    }
+
+    function renderMasthead(meta) {
+      const title = String(meta.seriesTitle || "生活指南").trim() || "生活指南";
+      const chars = Array.from(title);
+      const splitAt = chars.length > 4 ? Math.ceil(chars.length / 2) : chars.length;
+      const first = chars.slice(0, splitAt).join("");
+      const rest = chars.slice(splitAt).join("");
+      const tagline = String(meta.seriesTagline || "一档生活视频").trim();
+      return '<div style="position:absolute;left:' + SIDE + 'px;right:' + SIDE + 'px;top:76px;z-index:60;pointer-events:none">' +
+        '<div style="display:flex;gap:30px">' +
+          '<div style="width:6px;height:300px;margin-top:8px;border-radius:3px;background:linear-gradient(180deg,#e8a33d,#e8a33d66 78%,transparent);box-shadow:0 0 22px #e8a33d44"></div>' +
+          '<div style="min-width:0">' +
+            '<div style="font-size:19px;line-height:1.2;font-weight:600;letter-spacing:8px;color:#e8a33d">生活指南</div>' +
+            '<div style="margin-top:20px;font-size:140px;line-height:1.02;font-weight:800;letter-spacing:1px;color:#F5F1EA;white-space:nowrap;text-shadow:0 4px 26px rgba(0,0,0,0.55)">' + esc(first) + '</div>' +
+            '<div style="font-size:140px;line-height:1.02;font-weight:800;letter-spacing:1px;color:#e8a33d;white-space:nowrap;text-shadow:0 4px 26px rgba(0,0,0,0.5)">' + esc(rest) + '</div>' +
+          '</div>' +
+        '</div>' +
+        '<div style="position:absolute;left:0;right:0;top:362px;font-size:28px;line-height:1.2;letter-spacing:4px;font-weight:500;color:rgba(245,241,234,0.62)">' + esc(tagline) + '</div>' +
+        '<div style="position:absolute;right:0;top:86px;width:10px;height:10px;transform:rotate(45deg);background:#e8a33d;opacity:0.9"></div>' +
+      '</div>';
+    }
+
+    function renderTitleBar(scene) {
+      return '<div style="position:absolute;left:0;top:0;width:1080px;height:640px;overflow:hidden;z-index:20;background:linear-gradient(180deg,#0E1116f2 0%,#0E1116de 42%,#0E1116a8 68%,#0E111652 86%,#0E111600 100%)">' +
+        '<div style="position:absolute;left:' + SIDE + 'px;top:520px;height:120px;display:flex;align-items:center;max-width:948px">' +
+          '<div style="font-size:54px;line-height:1.22;letter-spacing:1.2px;font-weight:700;color:#F5F1EA;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;text-shadow:0 3px 22px rgba(0,0,0,0.5)">' + esc(scene.title || "") + '</div>' +
+        '</div>' +
+      '</div>';
+    }
+
+    function renderCanvas(scene, styleOverride) {
+      const material = isMaterialScene(scene);
+      const style = normalizeStyle(styleOverride || scene.layoutStyle);
+      const layout = state.layout || {};
+      const box = safeBox(layout);
+      const preset = style.preset;
+      const photoBox = preset === "top"
+        ? { left: 0, top: 500, width: W, height: 440 }
+        : preset === "left"
+          ? { left: 0, top: 500, width: 560, height: 860 }
+          : { left: 0, top: 0, width: W, height: H };
+      const contentBottomInset = Math.max(SAFE_BOTTOM, box.bottom);
+      const contentMinTop = material ? (preset === "full" ? 600 : preset === "top" ? 980 : 660) : 668;
+      const contentMaxTop = Math.max(contentMinTop, H - contentBottomInset - 200);
+      const contentTop = contentMinTop + (style.contentY / 100) * (contentMaxTop - contentMinTop);
+      const baseLeft = preset === "left" ? 620 : box.left;
+      const baseWidth = preset === "left" ? W - box.right - 620 : W - box.left - box.right;
+      const shift = Math.round((style.contentX / 100) * Math.min(180, baseWidth * 0.22));
+      const contentLeft = baseLeft + shift;
+      const contentWidth = Math.max(240, baseWidth - shift);
+      const justify = style.contentAlign === "center" ? "center" : style.contentAlign === "right" ? "flex-end" : "flex-start";
+      const photoUrl = mediaPhoto(scene.photo);
+      const photo = photoUrl
+        ? '<div style="position:absolute;left:' + photoBox.left + 'px;top:' + photoBox.top + 'px;width:' + photoBox.width + 'px;height:' + photoBox.height + 'px;overflow:hidden;background:#151b24">' +
+            '<div style="position:absolute;inset:0;background-image:url(\'' + photoUrl + '\');background-size:cover;background-position:' + style.photoX + '% ' + style.photoY + '%;transform:scale(' + style.photoScale + ');transform-origin:' + style.photoX + '% ' + style.photoY + '%;filter:brightness(1.06) saturate(1.04)"></div>' +
+          '</div>'
+        : '<div style="position:absolute;inset:0;background:linear-gradient(155deg,#151b24,#0E1116)"></div>';
+      const topScrim = '<div style="position:absolute;inset:0;z-index:2;background:linear-gradient(180deg,#0E1116e6 0%,#0E1116a8 22%,#0E111633 38%,#0E111600 52%)"></div>';
+      const bottomScrim = '<div style="position:absolute;inset:0;z-index:3;background:linear-gradient(180deg,#0E111600 0%,#0E111600 38%,#0E111633 52%,#0E1116aa 68%,#0E1116e6 84%,#0E1116f2 100%)"></div>';
+      const contentScrim = '<div style="position:absolute;left:' + Math.max(0, contentLeft - 28) + 'px;right:' + Math.max(0, W - contentLeft - contentWidth - 28) + 'px;top:' + Math.max(0, contentTop - 150) + 'px;height:430px;z-index:4;background:linear-gradient(180deg,#0E111600 0%,#0E11168c 24%,#0E1116b8 62%,#0E111600 100%);opacity:0.9"></div>';
+      const kicker = material
+        ? '<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px"><div style="width:8px;height:8px;border-radius:4px;background:#e8a33d;box-shadow:0 0 12px #e8a33d66"></div><div style="font-size:22px;letter-spacing:5px;color:#e8a33d;font-weight:600">' + esc(scene.kicker || scene.barTitle || "生活切片") + '</div></div>'
+        : "";
+      const bullets = (scene.bullets || []).slice(0, 3).map((text, i) =>
+        '<div style="display:flex;gap:12px;align-items:flex-start;justify-content:' + justify + ';margin-top:8px">' +
+          '<div style="margin-top:13px;width:7px;height:7px;border-radius:4px;flex:none;background:' + (i === 0 ? "#e8a33d" : "rgba(255,255,255,0.35)") + '"></div>' +
+          '<div style="font-size:' + (preset === "left" ? 27 : 31) + 'px;line-height:1.5;font-weight:' + (i === 0 ? 700 : 500) + ';color:#F5F1EA;opacity:' + (i === 0 ? 1 : 0.86) + ';text-shadow:0 2px 18px rgba(0,0,0,0.7)">' + esc(text) + '</div>' +
+        '</div>'
+      ).join("");
+      return '<div style="position:absolute;inset:0;background:#0E1116">' +
+        photo + topScrim + bottomScrim + contentScrim +
+        renderTitleBar(scene) +
+        renderMasthead(state.meta || {}) +
+        '<div style="position:absolute;left:' + contentLeft + 'px;top:' + contentTop + 'px;width:' + contentWidth + 'px;z-index:10;display:flex;flex-direction:column;align-items:flex-start;text-align:' + style.contentAlign + '">' +
+          kicker +
+          '<div style="width:100%">' + bullets + '</div>' +
+        '</div>' +
+        renderAvatar(layout) +
+      '</div>';
+    }
+
+    function renderSceneList() {
+      const host = $("#sceneList");
+      $("#sceneCount").textContent = state.scenes.length ? state.scenes.length + " 幕" : "";
+      if (!state.scenes.length) {
+        host.innerHTML = '<div class="empty">还没有分镜，先在主界面生成或刷新分镜。</div>';
+        return;
+      }
+      host.innerHTML = state.scenes.map((scene, index) => {
+        const source = scene.photoSource === "material" ? (scene.chapter && scene.chapter !== "未分章" ? scene.chapter : scene.barTitle || "素材") : scene.layout === "closing" ? "收尾" : "网络图";
+        return '<button type="button" class="scene-card ' + (scene.id === state.selectedId ? "active" : "") + '" data-scene-id="' + esc(scene.id) + '">' +
+          '<div class="thumb"><div class="thumb-canvas">' + renderCanvas(scene) + '</div></div>' +
+          '<div class="scene-copy"><b>' + esc(scene.barTitle || scene.title || "第 " + (index + 1) + " 幕") + '</b><span>' + esc(scene.title || "") + '</span><em>' + esc(source) + '</em></div>' +
+        '</button>';
+      }).join("");
+    }
+
+    function fitStage() {
+      const stage = $("#stage");
+      const canvas = $("#canvas");
+      if (!stage || !canvas) return;
+      const scale = stage.clientWidth / W;
+      canvas.style.transform = "scale(" + scale + ")";
+    }
+
+    function renderStage() {
+      const scene = selectedScene();
+      if (!scene) {
+        $("#canvas").innerHTML = "";
+        $("#stageTitle").textContent = "—";
+        $("#stageSub").textContent = "";
+        return;
+      }
+      const draft = state.draft && state.draft.sceneId === scene.id ? state.draft.style : null;
+      $("#canvas").innerHTML = renderCanvas(scene, draft);
+      $("#stageTitle").textContent = scene.barTitle || scene.title || scene.id;
+      $("#stageSub").textContent = (scene.kicker || "") + " · " + (isMaterialScene(scene) ? "素材排版" : scene.layout === "closing" ? "收尾版式" : "网络图版式");
+      const notice = $("#notice");
+      if (isMaterialScene(scene)) {
+        notice.classList.add("hidden");
+        notice.textContent = "";
+      } else {
+        notice.classList.remove("hidden");
+        notice.textContent = "这一幕使用成片内置版式（网络图或收尾），这里的布局参数不会改变成片；如需统一改成素材排版，请先在主界面换用素材图。";
+      }
+      fitStage();
+    }
+
+    function applyControls(style) {
+      document.querySelectorAll("#presets [data-preset]").forEach((button) => {
+        button.classList.toggle("active", button.dataset.preset === style.preset);
+      });
+      const values = {
+        photoScale: Math.round(style.photoScale * 100),
+        photoX: style.photoX,
+        photoY: style.photoY,
+        contentX: style.contentX,
+        contentY: style.contentY
+      };
+      Object.entries(values).forEach(([key, value]) => {
+        const input = document.querySelector('[data-field="' + key + '"]');
+        const output = document.getElementById("out-" + key);
+        if (input) input.value = String(value);
+        if (output) output.textContent = value + (key === "photoScale" ? "%" : "");
+      });
+      document.querySelectorAll("#alignRow [data-align]").forEach((button) => {
+        button.classList.toggle("active", button.dataset.align === style.contentAlign);
+      });
+      $("#layoutKey").textContent = style.preset === "full" ? "满屏" : style.preset === "top" ? "上图下文" : "左图右文";
+    }
+
+    function syncControls() {
+      const scene = selectedScene();
+      applyControls(normalizeStyle(scene?.layoutStyle));
+    }
+
+    function currentStyle() {
+      const preset = document.querySelector("#presets [data-preset].active")?.dataset.preset || "full";
+      const value = (field) => Number(document.querySelector('[data-field="' + field + '"]')?.value);
+      const align = document.querySelector("#alignRow [data-align].active")?.dataset.align || "left";
+      return normalizeStyle({
+        preset,
+        photoScale: value("photoScale") / 100,
+        photoX: value("photoX"),
+        photoY: value("photoY"),
+        contentX: value("contentX"),
+        contentY: value("contentY"),
+        contentAlign: align
+      }, preset);
+    }
+
+    function status(text, error = false) {
+      const el = $("#status");
+      el.textContent = text;
+      el.style.color = error ? "var(--danger)" : "";
+      clearTimeout(state.statusTimer);
+      if (!error) state.statusTimer = setTimeout(() => { el.textContent = "不生成视频，直接审阅静态排版"; el.style.color = ""; }, 2600);
+    }
+
+    async function postJson(url, body) {
+      const response = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "请求失败");
+      return data;
+    }
+
+    async function saveLayout(style) {
+      const scene = selectedScene();
+      if (!scene) return;
+      try {
+        const data = await postJson("/api/scene/layout", { sceneId: scene.id, layoutStyle: style });
+        if (data.layoutStyle) scene.layoutStyle = data.layoutStyle;
+        if (data.motion?.scenes) {
+          state.scenes = data.motion.scenes;
+        }
+        state.draft = null;
+        renderSceneList();
+        renderStage();
+        syncControls();
+        status("布局已保存，成片会沿用这套设置");
+      } catch (err) {
+        status(err.message || "布局保存失败", true);
+      }
+    }
+
+    function scheduleSave() {
+      clearTimeout(state.saveTimer);
+      state.saveTimer = setTimeout(() => saveLayout(currentStyle()), 360);
+    }
+
+    function renderTemplates() {
+      const host = $("#templateList");
+      $("#templateCount").textContent = state.templates.length ? state.templates.length + " 个" : "";
+      if (!state.templates.length) {
+        host.innerHTML = '<div class="empty">还没有模板。调好布局后保存，下次可直接套用。</div>';
+        return;
+      }
+      host.innerHTML = state.templates.map((template) => {
+        const style = normalizeStyle(template.style);
+        const label = style.preset === "full" ? "满屏" : style.preset === "top" ? "上图下文" : "左图右文";
+        const date = template.createdAt ? new Date(template.createdAt).toLocaleDateString("zh-CN") : "";
+        return '<div class="tpl-item"><div class="tpl-copy"><b>' + esc(template.name) + '</b><span>' + label + (date ? " · " + date : "") + '</span></div>' +
+          '<button type="button" data-template-apply="' + esc(template.id) + '">套用</button>' +
+          '<button type="button" class="danger" data-template-delete="' + esc(template.id) + '">删除</button></div>';
+      }).join("");
+    }
+
+    function renderAll() {
+      renderSceneList();
+      renderStage();
+      syncControls();
+      renderTemplates();
+      const series = [state.meta.seriesTitle, state.meta.seriesTagline].filter(Boolean).join(" · ");
+      $("#seriesMeta").textContent = series || "当前分镜";
+    }
+
+    async function loadData(keepSelection = true) {
+      status("正在读取分镜…");
+      const response = await fetch("/api/motion", { cache: "no-store" });
+      if (!response.ok) throw new Error("读取分镜失败");
+      const data = await response.json();
+      state.scenes = data.scenes || [];
+      state.meta = data.meta || {};
+      state.layout = data.layout || { mode: "none" };
+      state.templates = data.templates || [];
+      state.draft = null;
+      if (!keepSelection || !state.scenes.some((scene) => scene.id === state.selectedId)) {
+        const material = state.scenes.find((scene) => isMaterialScene(scene));
+        state.selectedId = (material || state.scenes[0] || {}).id || "";
+      }
+      $("#templateName").value = "";
+      renderAll();
+      status(state.scenes.length ? "已读取 " + state.scenes.length + " 幕" : "还没有分镜");
+    }
+
+    function selectScene(id) {
+      state.selectedId = id;
+      state.draft = null;
+      renderSceneList();
+      renderStage();
+      syncControls();
+    }
+
+    document.getElementById("presets").addEventListener("click", (event) => {
+      const button = event.target.closest("[data-preset]");
+      if (!button) return;
+      document.querySelectorAll("#presets [data-preset]").forEach((item) => item.classList.toggle("active", item === button));
+      const preset = button.dataset.preset;
+      const nextY = DEFAULTS[preset]?.contentY ?? 0;
+      const yInput = document.querySelector('[data-field="contentY"]');
+      if (yInput) yInput.value = String(nextY);
+      const style = currentStyle();
+      state.draft = { sceneId: state.selectedId, style };
+      applyControls(style);
+      renderStage();
+      saveLayout(style);
+    });
+
+    document.querySelectorAll("[data-field]").forEach((input) => {
+      input.addEventListener("input", () => {
+        const output = document.getElementById("out-" + input.dataset.field);
+        if (output) output.textContent = input.value + (input.dataset.field === "photoScale" ? "%" : "");
+        state.draft = { sceneId: state.selectedId, style: currentStyle() };
+        renderStage();
+      });
+      input.addEventListener("change", scheduleSave);
+    });
+
+    document.getElementById("alignRow").addEventListener("click", (event) => {
+      const button = event.target.closest("[data-align]");
+      if (!button) return;
+      document.querySelectorAll("#alignRow [data-align]").forEach((item) => item.classList.toggle("active", item === button));
+      const style = currentStyle();
+      state.draft = { sceneId: state.selectedId, style };
+      renderStage();
+      saveLayout(style);
+    });
+
+    document.getElementById("reset").addEventListener("click", () => {
+      const scene = selectedScene();
+      if (!scene) return;
+      scene.layoutStyle = null;
+      state.draft = null;
+      syncControls();
+      renderStage();
+      saveLayout(currentStyle());
+    });
+
+    document.getElementById("saveNow").addEventListener("click", () => saveLayout(currentStyle()));
+
+    document.getElementById("saveTemplate").addEventListener("click", async () => {
+      const scene = selectedScene();
+      const style = currentStyle();
+      const presetLabel = style.preset === "full" ? "满屏" : style.preset === "top" ? "上图下文" : "左图右文";
+      const name = ($("#templateName").value.trim() || ((scene?.barTitle || scene?.title || "排版") + " · " + presetLabel)).slice(0, 40);
+      try {
+        const data = await postJson("/api/layout/templates", { name, style });
+        state.templates = data.templates || [];
+        $("#templateName").value = "";
+        renderTemplates();
+        status("已保存模板「" + name + "」");
+      } catch (err) {
+        status(err.message || "模板保存失败", true);
+      }
+    });
+
+    document.getElementById("templateList").addEventListener("click", async (event) => {
+      const applyButton = event.target.closest("[data-template-apply]");
+      const deleteButton = event.target.closest("[data-template-delete]");
+      const scene = selectedScene();
+      if (applyButton && scene) {
+        try {
+          const data = await postJson("/api/layout/templates/apply", { id: applyButton.dataset.templateApply, sceneId: scene.id });
+          if (data.motion?.scenes) state.scenes = data.motion.scenes;
+          const next = selectedScene();
+          if (next && data.layoutStyle) next.layoutStyle = data.layoutStyle;
+          state.draft = null;
+          renderSceneList();
+          renderStage();
+          syncControls();
+          status("已套用模板");
+        } catch (err) {
+          status(err.message || "套用失败", true);
+        }
+        return;
+      }
+      if (deleteButton) {
+        try {
+          const data = await postJson("/api/layout/templates/delete", { id: deleteButton.dataset.templateDelete });
+          state.templates = data.templates || [];
+          renderTemplates();
+          status("模板已删除");
+        } catch (err) {
+          status(err.message || "删除失败", true);
+        }
+      }
+    });
+
+    document.getElementById("sceneList").addEventListener("click", (event) => {
+      const button = event.target.closest("[data-scene-id]");
+      if (button) selectScene(button.dataset.sceneId);
+    });
+
+    document.getElementById("refresh").addEventListener("click", () => loadData(true));
+    window.addEventListener("resize", fitStage);
+
+    loadData(false).catch((err) => {
+      status(err.message || "读取失败", true);
+      $("#sceneList").innerHTML = '<div class="empty">读取分镜失败，请回主界面刷新后重试。</div>';
+    });
+  </script>
+</body>
+</html>
