@@ -514,7 +514,7 @@ function sceneList() {
   const scenes = Array.isArray(props?.scenes) ? props.scenes : [];
   const savedOverrides = readJson(PHOTO_OVERRIDE_FILE, null);
   const overrides =
-    savedOverrides?.scriptHash === props?.meta?.scriptHash && savedOverrides.scenes && typeof savedOverrides.scenes === "object"
+    savedOverrides?.scriptHash && savedOverrides.scriptHash === props?.meta?.scriptHash && savedOverrides.scenes && typeof savedOverrides.scenes === "object"
       ? savedOverrides.scenes
       : {};
   const sceneLayouts = readSceneLayouts(props?.meta?.scriptHash || "");
@@ -1230,6 +1230,18 @@ function fileOk(file, min = 1) {
   }
 }
 
+// CLI 入口常常只是几百字节的启动垫片（python console_script / shell wrapper），
+// 用字节数判断可用性会误报，这里按「存在 + 可执行」判断。
+function binOk(file) {
+  try {
+    if (fs.statSync(file).size <= 0) return false;
+    fs.accessSync(file, fs.constants.X_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function kaggleToken() {
   const priv = readPrivate();
   const kaggle = priv.kaggle || {};
@@ -1255,6 +1267,18 @@ function gpuName() {
     gpuCache = out || "未知";
     return gpuCache;
   } catch {
+    // macOS（Apple Silicon / Intel 核显）：没有 nvidia-smi，用 system_profiler 取型号；
+    // 统一内存也能跑 MPS，不该因为探不到 NVIDIA 就显示「未检测」。
+    if (process.platform === "darwin") {
+      try {
+        const out = execFileSync("system_profiler", ["SPDisplaysDataType"], { encoding: "utf8", timeout: 8000 });
+        const chip = String(out).match(/Chipset Model:\s*(.+)/)?.[1]?.trim();
+        if (chip) {
+          gpuCache = `${chip}（Metal）`;
+          return gpuCache;
+        }
+      } catch {}
+    }
     try {
       const out = execFileSync(
         "powershell.exe",
@@ -1373,14 +1397,35 @@ function envStatus(tts) {
   const indeReady = fileOk(path.join(inde.modelDir || local.indexttsModel || path.join(indeRepo, "checkpoints"), "config.yaml"));
   const kaggleBin = path.resolve(local.kaggleBin || inde.kaggleBin || "kaggle");
   const hasToken = kaggleToken();
+  const kaggleReady = hasToken && binOk(kaggleBin);
+  // 「没装」和「装了但不完整」是两件事：前者是可选未选，后者才需要修
+  const cosyInstalled = fs.existsSync(modelDir);
+  const vsInstalled = fs.existsSync(local.voiceStudioRoot);
+  const indeRoot = inde.repoPath || local.indexttsRepo;
+  const indeInstalled = Boolean(indeRoot) && fs.existsSync(path.resolve(indeRoot));
   return [
     { key: "node", label: "Node", ok: true, text: process.version },
     { key: "python", label: "Python", ok: fileOk(PYTHON, 1024), text: fileOk(PYTHON, 1024) ? "已就绪" : "未找到" },
     { key: "gpu", label: "GPU", ok: gpuName() !== "未检测", text: gpuName() },
-    { key: "kaggle", label: "Kaggle", ok: hasToken && fileOk(kaggleBin, 1024), text: hasToken ? (fileOk(kaggleBin, 1024) ? "已连接" : "缺少 CLI") : "缺少凭据" },
-    { key: "cosyvoice", label: "CosyVoice", ok: cosyReady, text: cosyReady ? "模型完整" : "模型不完整" },
-    { key: "voicestudio", label: "VoiceStudio", ok: vsStatus.ok, text: vsStatus.text },
-    { key: "indextts", label: "IndexTTS", ok: indeReady, text: indeReady ? "本机可用" : "未安装" },
+    { key: "kaggle", label: "Kaggle", ok: kaggleReady, text: hasToken ? (kaggleReady ? "已连接" : "缺少 CLI") : "缺少凭据" },
+    {
+      key: "cosyvoice",
+      label: "CosyVoice",
+      ok: cosyReady,
+      text: cosyReady ? "模型完整" : cosyInstalled ? "模型不完整" : "未安装（可选）",
+    },
+    {
+      key: "voicestudio",
+      label: "VoiceStudio",
+      ok: vsStatus.ok,
+      text: vsStatus.ok ? vsStatus.text : vsInstalled ? vsStatus.text : "未安装（可选）",
+    },
+    {
+      key: "indextts",
+      label: "IndexTTS",
+      ok: indeReady,
+      text: indeReady ? "本机可用" : indeInstalled ? "未就绪" : "未安装（可选）",
+    },
   ];
 }
 
