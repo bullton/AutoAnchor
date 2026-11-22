@@ -35,6 +35,35 @@ def default_path(env_name, *parts):
     return Path(value) if value else ROOT.joinpath(*parts)
 
 
+def venv_python(venv_dir, name="python"):
+    return Path(venv_dir) / ("Scripts" if os.name == "nt" else "bin") / (f"{name}.exe" if os.name == "nt" else name)
+
+
+VOICE_FILE_EXTS = {".wav", ".mp3", ".m4a", ".flac"}
+
+
+def resolve_voice_ref(cfg, key="refWav"):
+    """Use the sample configured for this machine; never fall back to a bundled person's voice."""
+    explicit = str(cfg.get(key) or "").strip()
+    if explicit:
+        return Path(explicit)
+    root = str(os.environ.get("OD_VOICEREF") or "").strip()
+    if root:
+        folder = Path(root)
+        if folder.is_file():
+            return folder
+        if folder.is_dir():
+            samples = sorted(
+                file for file in folder.iterdir()
+                if file.is_file() and file.suffix.lower() in VOICE_FILE_EXTS and not file.name.startswith("_upload-")
+            )
+            if len(samples) == 1:
+                return samples[0]
+            if len(samples) > 1:
+                raise RuntimeError("参考音色目录中有多个音频，请在首次配置中明确选择你自己的样本声音")
+    raise RuntimeError("未配置参考音色：请在首次配置中上传或选择你自己的样本声音")
+
+
 def run(cmd):
     p = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
     if p.returncode != 0:
@@ -415,7 +444,7 @@ def _vs_voice_id(base: str, cfg) -> str:
     explicit = str(cfg.get("profileId") or "").strip()
     if explicit:
         return explicit
-    ref = Path(str(cfg.get("refWav") or ""))
+    ref = resolve_voice_ref(cfg, "refWav")
     if not ref.is_file():
         raise RuntimeError(f"找不到参考音色：{ref}")
     ref_text = _vs_ref_text(ref, cfg)
@@ -596,7 +625,7 @@ def _synth_chunks_steady(texts, outs, cfg, out_dir, synth_chunk, tag="vs"):
     seed_base = int(seed) if str(seed if seed is not None else "").strip() else None
     tone_tol = float(cfg.get("toneTolerance") or 0.09)
     try:
-        ref_f0 = _median_f0(Path(str(cfg.get("refWav") or "")))
+        ref_f0 = _median_f0(resolve_voice_ref(cfg, "refWav"))
     except Exception:
         ref_f0 = 0.0
     f0_samples = []
@@ -767,7 +796,7 @@ def synth_local3(texts, outs, cfg, out_dir):
         _sys.path.insert(0, str(scripts))
     from cosyvoice3_worker import LocalCosyVoice
 
-    ref = Path(cfg.get("refWav") or default_path("OD_VOICEREF", "assets", "voice-ref", "0226_prompt.wav"))
+    ref = resolve_voice_ref(cfg, "refWav")
     if not ref.is_file():
         raise RuntimeError(f"找不到参考音色：{ref}")
     ref_text = str(cfg.get("refText") or "").strip()
@@ -814,10 +843,10 @@ def synth_indextts(texts, outs, cfg, out_dir):
     import subprocess
 
     repo = Path(cfg.get("repoPath") or default_path("OD_INDEXTTS_REPO", "vendor", "indextts"))
-    python = Path(cfg.get("python") or os.environ.get("OD_INDEXTTS_PYTHON") or repo / ".venv" / "Scripts" / "python.exe")
+    python = Path(cfg.get("python") or os.environ.get("OD_INDEXTTS_PYTHON") or venv_python(repo / ".venv"))
     helper = Path(cfg.get("batchScript", HERE / "tts" / "indextts_batch.py"))
     model_dir = Path(cfg.get("modelDir", repo / "checkpoints"))
-    prompt = Path(cfg.get("promptWav", ""))
+    prompt = resolve_voice_ref(cfg, "promptWav")
 
     if not python.exists():
         raise RuntimeError(f"找不到 IndexTTS 的 Python：{python}")
@@ -874,7 +903,7 @@ def synth_kaggle(texts, outs, cfg, out_dir, ids):
     if not runner.is_file():
         raise RuntimeError(f"找不到 Kaggle 配音脚本：{runner}")
 
-    prompt = Path(cfg.get("promptWav", ""))
+    prompt = resolve_voice_ref(cfg, "promptWav")
     if not prompt.is_file():
         raise RuntimeError(f"找不到参考音色：{prompt}")
 
@@ -1055,9 +1084,9 @@ def _sentence_bounds(sentences, words, duration: float):
 
 def _engine_take(text: str, cfg, out_dir: Path, raw: Path) -> None:
     """Whole script through the local engine in model-safe chunks with crossfades."""
-    py = str(cfg.get("enginePython") or default_path("OD_COSYVOICE_PYTHON", "vendor", "CosyVoice", ".venv", "Scripts", "python.exe"))
+    py = str(cfg.get("enginePython") or os.environ.get("OD_COSYVOICE_PYTHON") or venv_python(default_path("OD_COSYVOICE_VENDOR", "vendor", "CosyVoice") / ".venv"))
     script = Path(__file__).resolve().parent / "scripts" / "cosyvoice_nosplit.py"
-    ref = Path(str(cfg.get("refWav") or ""))
+    ref = resolve_voice_ref(cfg, "refWav")
     if not ref.is_file():
         raise RuntimeError(f"ref wav missing: {ref}")
     ref_text = _vs_ref_text(ref, cfg)

@@ -433,9 +433,11 @@ const state = {
   voices: [],
   avatars: [],
   materials: { items: [], chapters: [], hash: "" },
+  inputMaterialId: "",
   layoutPresets: [],
   avatarBusy: false,
   materialBusy: false,
+  voiceUploadFromInput: false,
   prep: { state: "idle", stage: "", logs: [] },
   runPlan: null,
   savedScript: "",
@@ -673,13 +675,14 @@ function updateVoiceMeta(name) {
   const meta = state.voices.find((v) => v.name === name);
   $("#voiceMeta").textContent = meta
     ? `${meta.name} · ${Math.max(1, Math.round(meta.size / 1024))} KB · 参考音色`
-    : "参考音频位于 assets/voice-ref。";
+    : "参考音色目录";
 }
 
 function syncVoiceControls() {
   const edge = state.config.provider === "edge";
   $("#playVoice").disabled = edge || !$("#voiceSelect").value;
   $("#uploadVoice").disabled = edge || state.runActive;
+  $("#inputVoiceUploadBtn").disabled = edge || state.runActive;
   $("#trimPreview").disabled = state.runActive;
   $("#trimSave").disabled = state.runActive;
 }
@@ -834,7 +837,7 @@ async function discardTrim(quiet = true) {
   if (!quiet) toast("已取消上传");
 }
 
-async function uploadVoice(file) {
+async function uploadVoice(file, { fromInput = false } = {}) {
   if (!state.online) {
     toast("服务未连接，无法上传", "error");
     return;
@@ -856,9 +859,11 @@ async function uploadVoice(file) {
     return;
   }
   const button = $("#uploadVoice");
+  const inputButton = $("#inputVoiceUploadBtn");
   const label = button.textContent;
   button.disabled = true;
   button.textContent = "上传中…";
+  if (inputButton) inputButton.disabled = true;
   try {
     const res = await fetch(U("/api/voices/upload"), {
       method: "POST",
@@ -872,11 +877,18 @@ async function uploadVoice(file) {
     if (!res.ok) throw new Error(data.error || `上传失败 (${res.status})`);
     if (state.trim) await discardTrim();
     openTrim(data.name, Number(data.duration) || 0);
-    toast(`已上传 ${data.original || file.name} · ${fmtSeconds(data.duration)}`, "ok");
+    if (fromInput) {
+      switchTab("voice");
+      window.setTimeout(() => $("#trimPanel")?.scrollIntoView({ block: "nearest", behavior: "smooth" }), 80);
+      toast(`已上传 ${data.original || file.name}，请截取参考片段`, "ok");
+    } else {
+      toast(`已上传 ${data.original || file.name} · ${fmtSeconds(data.duration)}`, "ok");
+    }
   } catch (err) {
     toast(err.message, "error");
   } finally {
     button.textContent = label;
+    if (inputButton) inputButton.disabled = false;
     syncVoiceControls();
   }
 }
@@ -911,6 +923,7 @@ async function saveTrim() {
     if (key) state.config[provider][key] = data.name;
 
     renderVoiceOptions();
+    renderInputOverview();
     updateVoiceMeta(data.name);
     markDirty();
     toast(`已截取 ${fmtSeconds(data.duration)} 并选中`, "ok");
@@ -1638,15 +1651,66 @@ function renderScriptStats() {
     : `<li class="empty">还没有文案。</li>`;
 }
 
+function materialBaseName(name) {
+  const value = String(name || "");
+  const dot = value.lastIndexOf(".");
+  return dot > 0 ? value.slice(0, dot) : value;
+}
+
+function currentInputMaterial() {
+  const items = state.materials?.items || [];
+  if (!items.length) {
+    state.inputMaterialId = "";
+    return null;
+  }
+  let index = items.findIndex((item) => item.id === state.inputMaterialId || item.key === state.inputMaterialId);
+  if (index < 0) index = 0;
+  state.inputMaterialId = items[index].id;
+  return { item: items[index], index, total: items.length };
+}
+
+function stepInputMaterial(delta) {
+  const items = state.materials?.items || [];
+  if (items.length < 2) return;
+  const current = currentInputMaterial();
+  const index = ((current?.index || 0) + delta + items.length) % items.length;
+  state.inputMaterialId = items[index].id;
+  renderInputOverview();
+}
+
 function renderInputOverview() {
   const layout = uiLayout();
+  const avatarSrc = layout.mode === "none" ? "" : layout.avatar.src;
   const avatarSelect = $("#inputAvatarSelect");
   if (avatarSelect) {
     avatarSelect.innerHTML =
       `<option value="">不使用数字人</option>` +
       (state.avatars || [])
-        .map((item) => `<option value="${esc(item.src)}" ${item.src === layout.avatar.src ? "selected" : ""}>${esc(item.name)}</option>`)
+        .map((item) => `<option value="${esc(item.src)}" ${avatarSrc && item.src === avatarSrc ? "selected" : ""}>${esc(item.name)}</option>`)
         .join("");
+  }
+  const avatarPreview = $("#inputAvatarPreview");
+  if (avatarPreview) {
+    const key = `${layout.mode}|${avatarSrc}`;
+    if (avatarPreview.dataset.key !== key) {
+      avatarPreview.dataset.key = key;
+      if (!avatarSrc) {
+        avatarPreview.innerHTML = `<span class="io-thumb-empty">未选择</span>`;
+      } else if (/\.(mp4|webm|mov)(\?|$)/i.test(avatarSrc)) {
+        avatarPreview.innerHTML = `<video src="${esc(avatarUrl(avatarSrc))}" muted autoplay loop playsinline></video><i class="io-thumb-badge">视频</i>`;
+      } else {
+        avatarPreview.innerHTML = `<img src="${esc(avatarUrl(avatarSrc))}" alt="" /><i class="io-thumb-badge">图片</i>`;
+      }
+    }
+  }
+  const avatarNote = $("#inputAvatarNote");
+  if (avatarNote) {
+    const current = (state.avatars || []).find((item) => item.src === avatarSrc);
+    avatarNote.textContent = !avatarSrc
+      ? "未使用数字人；可上传参考视频或头像图片"
+      : current
+        ? `当前：${current.name}`
+        : "可上传参考视频或头像图片";
   }
   const voiceSelect = $("#inputVoiceSelect");
   if (voiceSelect) {
@@ -1664,9 +1728,39 @@ function renderInputOverview() {
   const summary = $("#inputMaterialSummary");
   if (summary) {
     const items = state.materials?.items?.length || 0;
-    const chapters = state.materials?.chapters?.length || 0;
+    const chapters = (state.materials?.chapters || []).filter((chapter) => chapter.name !== "未分章").length;
     summary.textContent = `${items} 张 · ${chapters} 章`;
   }
+  const current = currentInputMaterial();
+  const materialPreview = $("#inputMaterialPreview");
+  if (materialPreview) {
+    if (!current) {
+      materialPreview.dataset.key = "";
+      materialPreview.innerHTML = `<span class="io-thumb-empty">还没有素材</span>`;
+    } else {
+      const key = `${current.item.id}|${current.index}`;
+      if (materialPreview.dataset.key !== key) {
+        materialPreview.dataset.key = key;
+        materialPreview.innerHTML = `<img src="${esc(U(current.item.src))}" alt="${esc(current.item.name)}" /><i class="io-thumb-badge">${current.index + 1}/${current.total}</i>`;
+      }
+    }
+  }
+  const nameInput = $("#inputMaterialName");
+  if (nameInput) {
+    nameInput.disabled = !current;
+    if (document.activeElement !== nameInput) nameInput.value = current ? materialBaseName(current.item.name) : "";
+    nameInput.placeholder = current ? "只改名称，扩展名保持不变" : "先上传一张素材";
+  }
+  const chapterTag = $("#inputMaterialChapter");
+  if (chapterTag) chapterTag.textContent = current?.item?.chapter || "未分章";
+  const pos = $("#inputMaterialPos");
+  if (pos) pos.textContent = current ? `${current.index + 1} / ${current.total}` : "0 / 0";
+  const renameBtn = $("#inputMaterialRename");
+  if (renameBtn) renameBtn.disabled = !current;
+  const prevBtn = $("#inputMaterialPrev");
+  const nextBtn = $("#inputMaterialNext");
+  if (prevBtn) prevBtn.disabled = !current || current.total < 2;
+  if (nextBtn) nextBtn.disabled = !current || current.total < 2;
 }
 
 async function refreshRenderSummary() {
@@ -2146,7 +2240,7 @@ function renderMaterials() {
               .map(
                 (item) => `<figure class="material-item" draggable="true" data-material-id="${esc(item.id)}" title="拖到其他章节即可移动">
                   <img src="${esc(item.src)}" alt="${esc(item.name)}" loading="lazy" />
-                  <figcaption title="${esc(item.name)}">${esc(item.name)}</figcaption>
+                  <figcaption title="${esc(item.name)}">${esc(materialBaseName(item.name))}</figcaption>
                   <div class="material-item-actions">
                     <select data-material-chapter="${esc(item.id)}" aria-label="所属章节">${materialChapterOptions(item.chapter)}</select>
                     <button type="button" data-material-delete="${esc(item.id)}">删除</button>
@@ -2170,7 +2264,7 @@ function renderMaterials() {
       const draft = state.previewDraft && state.previewDraft.sceneId === current.id ? state.previewDraft.style : null;
       const canNetwork = Boolean(current.canRestoreNetwork || current.materialName || current.photoSource === "material");
       const sourceDetail = current.materialName
-        ? `${current.chapter && current.chapter !== "未分章" ? `${current.chapter} · ` : ""}${current.materialName}`
+        ? `${current.chapter && current.chapter !== "未分章" ? `${current.chapter} · ` : ""}${materialBaseName(current.materialName)}`
         : current.photoKey
           ? `网络图 · ${current.photoKey}`
           : "内置版式";
@@ -2394,7 +2488,10 @@ async function uploadMaterials(files) {
       uploaded += 1;
       if (data.item?.chapter && data.item.chapter !== "未分章") assigned.add(data.item.chapter);
     }
-    if (last) state.materials = last;
+    if (last) {
+      state.materials = last;
+      if (last.item?.id) state.inputMaterialId = last.item.id;
+    }
     renderMaterials();
     const autoNote = assigned.size ? `，${assigned.size} 个章节已自动归类` : "";
     toast(`已上传 ${uploaded} 张素材${autoNote}${state.autoPrep ? "，正在重新分镜…" : ""}`, "ok");
@@ -2408,6 +2505,28 @@ async function uploadMaterials(files) {
   } finally {
     state.materialBusy = false;
     $("#materialFiles").value = "";
+  }
+}
+
+async function renameMaterial(id, name) {
+  if (!id || !name || state.materialBusy) return;
+  state.materialBusy = true;
+  try {
+    const data = await api("/api/materials/update", {
+      method: "POST",
+      body: JSON.stringify({ id, name }),
+    });
+    state.materials = data;
+    state.inputMaterialId = id;
+    renderMaterials();
+    toast("已更新素材名称，扩展名保持不变", "ok");
+    if (state.autoPrep) await requestStoryboardPrep({ force: true, reason: "素材重命名" });
+    else await refreshStoryboardMeta();
+  } catch (err) {
+    toast(err.message || "重命名失败", "error");
+    renderInputOverview();
+  } finally {
+    state.materialBusy = false;
   }
 }
 
@@ -3132,6 +3251,41 @@ function bind() {
     markDirty();
   });
 
+  $("#inputAvatarUpload").addEventListener("change", (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (file) uploadAvatar(file);
+  });
+
+  const inputMaterialUpload = $("#inputMaterialUpload");
+  inputMaterialUpload.addEventListener("change", (event) => {
+    const files = Array.from(event.target.files || []);
+    event.target.value = "";
+    if (files.length) uploadMaterials(files);
+  });
+
+  const materialName = $("#inputMaterialName");
+  materialName.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    $("#inputMaterialRename").click();
+  });
+
+  $("#inputMaterialRename").addEventListener("click", () => {
+    const current = currentInputMaterial();
+    if (!current) return;
+    const name = materialBaseName(materialName.value.trim()).trim();
+    if (!name) {
+      toast("请输入素材名称", "error");
+      return;
+    }
+    if (name === materialBaseName(current.item.name)) return;
+    void renameMaterial(current.item.id, name);
+  });
+
+  $("#inputMaterialPrev").addEventListener("click", () => stepInputMaterial(-1));
+  $("#inputMaterialNext").addEventListener("click", () => stepInputMaterial(1));
+
   $("#inputVoiceSelect").addEventListener("change", (event) => {
     const name = event.target.value;
     const provider = state.config.provider;
@@ -3204,13 +3358,25 @@ function bind() {
       toast("任务运行中，暂不能替换音色", "error");
       return;
     }
+    state.voiceUploadFromInput = false;
+    $("#voiceFile").click();
+  });
+
+  $("#inputVoiceUploadBtn").addEventListener("click", () => {
+    if (state.runActive) {
+      toast("任务运行中，暂不能替换音色", "error");
+      return;
+    }
+    state.voiceUploadFromInput = true;
     $("#voiceFile").click();
   });
 
   $("#voiceFile").addEventListener("change", (event) => {
     const file = event.target.files?.[0];
+    const fromInput = state.voiceUploadFromInput;
+    state.voiceUploadFromInput = false;
     event.target.value = "";
-    if (file) uploadVoice(file);
+    if (file) uploadVoice(file, { fromInput });
   });
 
   $("#trimStart").addEventListener("input", updateTrimUI);

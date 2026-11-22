@@ -7,12 +7,14 @@ import { spawn, execFile, execFileSync } from "node:child_process";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import {
   PRIVATE_FILE,
+  chromeCandidates,
   mergeTtsConfig,
   maskedPrivate,
   privateAi,
   privatePaths,
   readPrivate,
   setupState,
+  venvPython,
   writePrivate,
 } from "./pipeline/private.mjs";
 
@@ -29,7 +31,7 @@ const AI_CONFIG = process.env.OD_AI_CONFIG || path.join(PIPELINE_ROOT, "pipeline
 const LAYOUT_CONFIG = path.join(PIPELINE_ROOT, "pipeline", "layout.json");
 const SCRIPT_FILE = path.join(PIPELINE_ROOT, "input", "script.txt");
 const SERIES_FILE = path.join(PIPELINE_ROOT, "input", "series.json");
-const VOICE_DIR = path.join(PIPELINE_ROOT, "assets", "voice-ref");
+const VOICE_DIR = privatePaths().voiceRef || path.join(PIPELINE_ROOT, "assets", "voice-ref");
 const AVATAR_DIR = path.join(PIPELINE_ROOT, "assets", "avatar");
 const MATERIAL_DIR = path.join(PIPELINE_ROOT, "assets", "materials");
 const MATERIAL_FILE = path.join(MATERIAL_DIR, "manifest.json");
@@ -1418,6 +1420,10 @@ const PRIVATE_TTS_FIELDS = new Set([
   "enginePython",
   "dspBackendDir",
   "kaggleBin",
+  "refWav",
+  "promptWav",
+  "refText",
+  "profileId",
 ]);
 
 function stripPrivateTts(tts = {}) {
@@ -1479,12 +1485,29 @@ function saveConfig(payload) {
   if (payload.indextts) tts.indextts = { ...(tts.indextts || {}), ...payload.indextts };
   if (payload.edge) tts.edge = { ...(tts.edge || {}), ...payload.edge };
   if (voice && provider !== "edge") {
-    const voicePath = publicVoicePath(path.isAbsolute(voice) ? voice : path.join(VOICE_DIR, voice));
-    if (tts.kaggle) tts.kaggle.promptWav = voicePath;
-    if (tts.cosyvoice) tts.cosyvoice.refWav = voicePath;
-    if (tts.voicestudio) tts.voicestudio.refWav = voicePath;
-    if (tts.local3) tts.local3.refWav = voicePath;
-    if (tts.indextts) tts.indextts.promptWav = voicePath;
+    const absVoice = path.isAbsolute(voice) ? voice : path.join(VOICE_DIR, voice);
+    const voicePath = publicVoicePath(absVoice);
+    const prev = ttsMerged();
+    const prevCfg = prev[provider] || {};
+    const prevVoice = prevCfg.refWav || prevCfg.promptWav || "";
+    const prevAbs = prevVoice
+      ? (path.isAbsolute(prevVoice) ? prevVoice : path.join(PIPELINE_ROOT, prevVoice))
+      : "";
+    const sameVoice = Boolean(prevAbs && path.resolve(prevAbs) === path.resolve(absVoice));
+    let refText = "";
+    try {
+      refText = fs.readFileSync(absVoice.replace(/\.[^.]+$/, ".txt"), "utf8").trim();
+    } catch {}
+    if (!refText && sameVoice) refText = String(prevCfg.refText || "").trim();
+    writePrivate({
+      tts: {
+        kaggle: { promptWav: voicePath },
+        cosyvoice: { refWav: voicePath, refText },
+        voicestudio: { refWav: voicePath, refText },
+        local3: { refWav: voicePath, refText },
+        indextts: { promptWav: voicePath },
+      },
+    });
   }
   const publicTts = stripPrivateTts(tts);
   writeJson(TTS_CONFIG, publicTts);
@@ -2057,6 +2080,20 @@ function startJob({
   }
   const saved = saveConfig(input);
   const digitalHuman = saved.ui.digitalHuman || candidateDigitalHuman;
+  const providerCfg = saved.tts[saved.tts.provider] || {};
+  const builtinVoice = saved.tts.provider === "edge"
+    || (saved.tts.provider === "cosyvoice" && String(providerCfg.mode || "").toLowerCase() === "sft");
+  if (!builtinVoice) {
+    const voiceValue = saved.tts.provider === "indextts" || saved.tts.provider === "kaggle"
+      ? providerCfg.promptWav
+      : providerCfg.refWav;
+    const voiceFile = voiceValue
+      ? (path.isAbsolute(voiceValue) ? voiceValue : path.resolve(PIPELINE_ROOT, voiceValue))
+      : "";
+    if (!voiceFile || !fileOk(voiceFile, 1024)) {
+      throw new Error("缺少样本声音：请先在首次配置中上传或选择你自己的声音");
+    }
+  }
   const text = (script || loadScript()).trim();
   if (!text) throw new Error("文案为空");
   fs.mkdirSync(path.dirname(SCRIPT_FILE), { recursive: true });
@@ -2223,13 +2260,14 @@ function renderSummary() {
 
 function workbuddyCandidates() {
   const home = os.homedir();
+  const appData = process.env.APPDATA || "";
+  const localAppData = process.env.LOCALAPPDATA || "";
   return [
     process.env.OD_WORKBUDDY_MODELS,
     path.join(home, ".workbuddy", "models.json"),
     path.join(home, ".workbuddy-ai", "models.json"),
-    path.join(process.env.APPDATA || "", "WorkBuddy", "models.json"),
-    path.join(process.env.APPDATA || "", "workbuddy", "models.json"),
-    path.join(process.env.LOCALAPPDATA || "", "WorkBuddy", "models.json"),
+    ...(appData ? [path.join(appData, "WorkBuddy", "models.json"), path.join(appData, "workbuddy", "models.json")] : []),
+    ...(localAppData ? [path.join(localAppData, "WorkBuddy", "models.json")] : []),
   ].filter(Boolean);
 }
 
@@ -2305,16 +2343,16 @@ function workbuddyPublic() {
 function setupDetect() {
   const local = privatePaths();
   const candidates = [
-    { key: "python", label: "Python", values: [local.python, path.join(PIPELINE_ROOT, ".venv", "Scripts", "python.exe"), process.env.OD_PYTHON].filter(Boolean) },
+    { key: "python", label: "Python", values: [local.python, venvPython(path.join(PIPELINE_ROOT, ".venv")), process.env.OD_PYTHON].filter(Boolean) },
     { key: "ffmpeg", label: "FFmpeg", values: [local.ffmpeg, "ffmpeg"] },
-    { key: "chrome", label: "Chrome", values: [local.chrome, "C:/Program Files/Google/Chrome/Application/chrome.exe", "C:/Program Files (x86)/Google/Chrome/Application/chrome.exe"].filter(Boolean) },
+    { key: "chrome", label: "Chrome", values: chromeCandidates(local.chrome) },
     { key: "modelsRoot", label: "模型目录", values: [local.modelsRoot, path.join(PIPELINE_ROOT, "models")] },
     { key: "vendorRoot", label: "依赖目录", values: [local.vendorRoot, path.join(PIPELINE_ROOT, "vendor")] },
     { key: "voiceStudioRoot", label: "VoiceStudio", values: [local.voiceStudioRoot, path.join(PIPELINE_ROOT, "vendor", "VoiceStudio")] },
     { key: "cosyvoiceVendor", label: "CosyVoice", values: [local.cosyvoiceVendor, path.join(PIPELINE_ROOT, "vendor", "CosyVoice")] },
     { key: "indexttsRepo", label: "IndexTTS", values: [local.indexttsRepo, path.join(PIPELINE_ROOT, "vendor", "indextts")] },
-    { key: "kagglePython", label: "Kaggle Python", values: [local.kagglePython, path.join(PIPELINE_ROOT, "pipeline", "tts", ".venv-kaggle", "Scripts", "python.exe")] },
-    { key: "kaggleBin", label: "Kaggle CLI", values: [local.kaggleBin, path.join(PIPELINE_ROOT, "pipeline", "tts", ".venv-kaggle", "Scripts", "kaggle.exe")] },
+    { key: "kagglePython", label: "Kaggle Python", values: [local.kagglePython, venvPython(path.join(PIPELINE_ROOT, "pipeline", "tts", ".venv-kaggle"))] },
+    { key: "kaggleBin", label: "Kaggle CLI", values: [local.kaggleBin, venvPython(path.join(PIPELINE_ROOT, "pipeline", "tts", ".venv-kaggle"), "kaggle")] },
   ];
   const paths = {};
   for (const item of candidates) {
@@ -2703,6 +2741,7 @@ const server = http.createServer(async (req, res) => {
       if (path.basename(input).startsWith("_upload-")) fs.rmSync(input, { force: true });
       sendJson(res, 200, {
         name: outName,
+        path: publicVoicePath(outFile),
         duration: probeDuration(outFile),
         size: fs.statSync(outFile).size,
         start,
@@ -2817,14 +2856,24 @@ const server = http.createServer(async (req, res) => {
     if (pathname === "/api/materials/update" && req.method === "POST") {
       const body = await readBody(req);
       const id = String(body.id || body.key || "");
-      const chapter = String(body.chapter || "").trim().slice(0, 40) || "未分章";
       const items = readMaterialManifest();
       const item = items.find((entry) => entry.id === id || entry.key === id);
       if (!item) {
         sendJson(res, 404, { error: "素材不存在" });
         return;
       }
-      item.chapter = chapter;
+      if (typeof body.name === "string") {
+        const base = body.name.trim().replace(/\.[^./\\]+$/, "").slice(0, 110).trim();
+        if (base) {
+          const ext = path.extname(item.name) || path.extname(item.file) || "";
+          item.name = `${base}${ext}`;
+          const detected = detectMaterialChapter(base, knownMaterialChapters());
+          if (detected !== "未分章") item.chapter = detected;
+        }
+      }
+      if (typeof body.chapter === "string") {
+        item.chapter = body.chapter.trim().slice(0, 40) || "未分章";
+      }
       writeMaterialManifest(items);
       sendJson(res, 200, listMaterials());
       return;

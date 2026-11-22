@@ -3,10 +3,32 @@ import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { createInterface } from "node:readline/promises";
 import { fileURLToPath } from "node:url";
-import { privatePaths, readPrivate, writePrivate } from "./pipeline/private.mjs";
+import { findChrome, privatePaths, readPrivate, venvPython, writePrivate } from "./pipeline/private.mjs";
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const yes = process.argv.includes("--yes") || process.argv.includes("-y");
+const AUDIO_EXTS = new Set([".wav", ".mp3", ".m4a", ".flac"]);
+
+const toPublicPath = (file) => {
+  const rel = path.relative(ROOT, file);
+  return rel.startsWith("..") ? file.replaceAll("\\", "/") : rel.replaceAll("\\", "/");
+};
+
+const findSample = (value, voiceDir) => {
+  const text = String(value || "").trim();
+  if (!text) return "";
+  return [path.resolve(ROOT, text), path.resolve(voiceDir, text)].find((file) => fs.existsSync(file) && AUDIO_EXTS.has(path.extname(file).toLowerCase())) || "";
+};
+
+const firstVoice = (voiceDir) => {
+  try {
+    return fs.readdirSync(voiceDir)
+      .filter((name) => AUDIO_EXTS.has(path.extname(name).toLowerCase()) && !name.startsWith("_upload-"))
+      .sort()[0] || "";
+  } catch {
+    return "";
+  }
+};
 
 function where(bin) {
   try {
@@ -27,14 +49,10 @@ function detect() {
   const python = [
     local.python,
     process.env.OD_PYTHON,
-    path.join(ROOT, ".venv", "Scripts", "python.exe"),
+    venvPython(path.join(ROOT, ".venv")),
     where("python"),
   ].find((value) => value && fs.existsSync(value));
-  const chrome = [
-    local.chrome,
-    "C:/Program Files/Google/Chrome/Application/chrome.exe",
-    "C:/Program Files (x86)/Google/Chrome/Application/chrome.exe",
-  ].find((value) => value && fs.existsSync(value));
+  const chrome = findChrome(local.chrome);
   return {
     python: python || "",
     ffmpeg: local.ffmpeg || where("ffmpeg") || "ffmpeg",
@@ -43,8 +61,8 @@ function detect() {
     modelsRoot: fs.existsSync(local.modelsRoot) ? local.modelsRoot : path.join(ROOT, "models"),
     vendorRoot: fs.existsSync(local.vendorRoot) ? local.vendorRoot : path.join(ROOT, "vendor"),
     voiceStudioRoot: fs.existsSync(local.voiceStudioRoot) ? local.voiceStudioRoot : path.join(ROOT, "vendor", "VoiceStudio"),
-    kagglePython: fs.existsSync(local.kagglePython) ? local.kagglePython : path.join(ROOT, "pipeline", "tts", ".venv-kaggle", "Scripts", "python.exe"),
-    kaggleBin: fs.existsSync(local.kaggleBin) ? local.kaggleBin : path.join(ROOT, "pipeline", "tts", ".venv-kaggle", "Scripts", "kaggle.exe"),
+    kagglePython: fs.existsSync(local.kagglePython) ? local.kagglePython : venvPython(path.join(ROOT, "pipeline", "tts", ".venv-kaggle")),
+    kaggleBin: fs.existsSync(local.kaggleBin) ? local.kaggleBin : venvPython(path.join(ROOT, "pipeline", "tts", ".venv-kaggle"), "kaggle"),
     voiceRef: local.voiceRef || path.join(ROOT, "assets", "voice-ref"),
   };
 }
@@ -75,6 +93,45 @@ const paths = {
   voiceRef: await ask("参考音色目录", found.voiceRef),
 };
 const provider = await ask("默认配音方案", "voicestudio", "voicestudio / local3 / indextts / kaggle / edge");
+
+const voiceDir = path.isAbsolute(paths.voiceRef) ? paths.voiceRef : path.join(ROOT, paths.voiceRef);
+let refWav = "";
+let refText = "";
+if (provider !== "edge") {
+  const sampleInput = await ask("样本声音（wav/mp3/m4a/flac，可留空）", firstVoice(voiceDir), "必须是自己的 3-10 秒干净人声");
+  const sample = findSample(sampleInput, voiceDir);
+  if (!sample) {
+    console.log("\n提示：没有找到样本声音。请把自己的录音放到参考音色目录，或在首次配置页上传。\n");
+  } else {
+    fs.mkdirSync(voiceDir, { recursive: true });
+    const ext = path.extname(sample).toLowerCase();
+    const target = path.join(voiceDir, ext === ".wav" ? path.basename(sample) : `${path.basename(sample, ext)}.wav`);
+    if (path.resolve(sample) !== path.resolve(target)) {
+      if (ext === ".wav") {
+        fs.copyFileSync(sample, target);
+      } else {
+        try {
+          execFileSync(found.ffmpeg, ["-y", "-v", "error", "-i", sample, "-vn", "-ac", "1", "-ar", "16000", "-c:a", "pcm_s16le", target], {
+            timeout: 120000,
+            windowsHide: true,
+          });
+        } catch (err) {
+          console.log(`\n无法转换样本声音：${err?.message || err}\n请先确认 FFmpeg 可用，或直接提供 wav 文件。\n`);
+        }
+      }
+    }
+    if (fs.existsSync(target)) {
+      refWav = toPublicPath(target);
+      let fallbackText = "";
+      try {
+        fallbackText = fs.readFileSync(target.replace(/\.wav$/i, ".txt"), "utf8").trim();
+      } catch {}
+      refText = await ask("样本朗读文本（可留空）", fallbackText, "填写录音里说的原话，克隆会更稳");
+      if (refText) fs.writeFileSync(target.replace(/\.wav$/i, ".txt"), `${refText}\n`, "utf8");
+    }
+  }
+}
+
 const kaggleUser = await ask("Kaggle 用户名（数字人，可留空）", "");
 const kaggleKey = kaggleUser ? await ask("Kaggle API Key / Token（可留空）", "") : "";
 const kaggleKernel = await ask("Kaggle Notebook", "latentsync-dual");
@@ -106,11 +163,13 @@ writePrivate({
   paths,
   tts: {
     provider,
-    voicestudio: { apiBase: "http://127.0.0.1:3900", refWav: "assets/voice-ref/0226_prompt.wav" },
-    cosyvoice: { refWav: "assets/voice-ref/0226_prompt.wav" },
-    local3: { refWav: "assets/voice-ref/0226_prompt.wav" },
-    indextts: { promptWav: "assets/voice-ref/0226_prompt.wav" },
-    kaggle: { promptWav: "assets/voice-ref/0226_prompt.wav" },
+    ...(refWav ? {
+      voicestudio: { apiBase: "http://127.0.0.1:3900", refWav, refText },
+      cosyvoice: { refWav, refText },
+      local3: { refWav, refText },
+      indextts: { promptWav: refWav },
+      kaggle: { promptWav: refWav },
+    } : {}),
   },
   kaggle: {
     username: kaggleUser,

@@ -6,7 +6,7 @@ This driver keeps the engine's own loading path but calls the frontend/model
 once, so a long script comes back as a single continuous utterance.
 
 CLI: python cosyvoice_nosplit.py --text-file script.txt --out take.wav \
-        --ref 0226_prompt.wav --ref-text 0226_prompt.txt [--speed 1.0] [--seed 2026]
+        --ref your-voice.wav --ref-text your-voice.txt [--speed 1.0] [--seed 2026]
 """
 
 from __future__ import annotations

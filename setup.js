@@ -51,13 +51,14 @@ function applySetup(data) {
   fill("#pathVendor", paths.vendorRoot);
   fill("#pathVoiceStudio", paths.voiceStudioRoot);
   fill("#pathIndextts", paths.indexttsRepo);
-  fill("#pathKagglePython", paths.kagglePython || "pipeline/tts/.venv-kaggle/Scripts/python.exe");
-  fill("#pathKaggleBin", paths.kaggleBin || "pipeline/tts/.venv-kaggle/Scripts/kaggle.exe");
+  fill("#pathKagglePython", paths.kagglePython);
+  fill("#pathKaggleBin", paths.kaggleBin);
   fill("#pathVoiceRef", paths.voiceRef);
   const tts = data.tts || {};
   if (tts.provider) fill("#ttsProvider", tts.provider);
   fill("#vsApiBase", tts.voicestudio?.apiBase || "http://127.0.0.1:3900");
-  fill("#ttsRefWav", tts.voicestudio?.refWav || tts.local3?.refWav || "assets/voice-ref/0226_prompt.wav");
+  fill("#ttsRefWav", tts.voicestudio?.refWav || tts.local3?.refWav || tts.cosyvoice?.refWav || tts.indextts?.promptWav || tts.kaggle?.promptWav || "");
+  fill("#ttsRefText", tts.voicestudio?.refText || tts.local3?.refText || tts.cosyvoice?.refText || "");
   const kaggle = data.kaggle || {};
   fill("#kaggleUser", kaggle.username || "");
   fill("#kaggleDataset", kaggle.dataset || "");
@@ -126,9 +127,50 @@ async function importWorkbuddy(id, button) {
   }
 }
 
+async function uploadRefSample(file) {
+  if (!/\.(wav|mp3|m4a|flac)$/i.test(file?.name || "")) {
+    toast("仅支持 wav / mp3 / m4a / flac", "error");
+    return;
+  }
+  if (file.size > 40 * 1024 * 1024) {
+    toast("文件超过 40MB", "error");
+    return;
+  }
+  const button = $("#ttsUploadBtn");
+  const label = button.textContent;
+  button.disabled = true;
+  button.textContent = "上传中…";
+  try {
+    const res = await fetch("/api/voices/upload", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/octet-stream",
+        "X-File-Name": encodeURIComponent(file.name),
+      },
+      body: file,
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `上传失败 (${res.status})`);
+    const total = Number(data.duration) || 0;
+    const clip = await api("/api/voices/clip", {
+      method: "POST",
+      body: JSON.stringify({ name: data.name, start: 0, duration: Math.min(12, Math.max(0.4, total)) }),
+    });
+    fill("#ttsRefWav", clip.path || clip.name);
+    fill("#ttsRefText", "");
+    toast(`样本已就绪：${clip.name} · ${Number(clip.duration || total).toFixed(1)}s`, "ok");
+  } catch (err) {
+    toast(err.message, "error");
+  } finally {
+    button.disabled = false;
+    button.textContent = label;
+  }
+}
+
 function collect() {
   const provider = $("#ttsProvider").value;
-  const refWav = $("#ttsRefWav").value.trim() || "assets/voice-ref/0226_prompt.wav";
+  const refWav = $("#ttsRefWav").value.trim();
+  const refText = $("#ttsRefText").value.trim();
   return {
     source: state.imported ? "workbuddy" : "manual",
     paths: {
@@ -148,12 +190,14 @@ function collect() {
       provider,
       voicestudio: {
         apiBase: $("#vsApiBase").value.trim() || "http://127.0.0.1:3900",
-        refWav,
+        ...(refWav ? { refWav, refText } : {}),
       },
-      cosyvoice: { refWav },
-      local3: { refWav },
-      indextts: { promptWav: refWav },
-      kaggle: { promptWav: refWav },
+      ...(refWav ? {
+        cosyvoice: { refWav, refText },
+        local3: { refWav, refText },
+        indextts: { promptWav: refWav },
+        kaggle: { promptWav: refWav },
+      } : {}),
     },
     kaggle: {
       username: $("#kaggleUser").value.trim(),
@@ -183,6 +227,9 @@ async function save({ pathsOnly = false } = {}) {
     const body = collect();
     if (pathsOnly) {
       body.ai = { ...body.ai, enabled: false };
+    }
+    if (!pathsOnly && body.tts.provider !== "edge" && !body.tts.voicestudio.refWav) {
+      throw new Error("请先上传或选择你自己的样本声音");
     }
     const result = await api("/api/setup", { method: "POST", body: JSON.stringify(body) });
     applySetup(result.setup);
@@ -250,6 +297,12 @@ async function init() {
     $("#setupState").textContent = "控制台服务未连接";
   }
   $("#detectBtn").addEventListener("click", detect);
+  $("#ttsUploadBtn").addEventListener("click", () => $("#ttsRefFile").click());
+  $("#ttsRefFile").addEventListener("change", (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (file) uploadRefSample(file);
+  });
   $("#saveBtn").addEventListener("click", () => save());
   $("#skipLink").addEventListener("click", (event) => {
     event.preventDefault();

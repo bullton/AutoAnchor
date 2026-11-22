@@ -88,11 +88,48 @@ export function resolvePath(value, base = ROOT) {
   return path.resolve(base, text);
 }
 
+export const IS_WIN = process.platform === "win32";
+
+export function venvPython(venvDir, name = "python") {
+  return path.join(venvDir, IS_WIN ? "Scripts" : "bin", IS_WIN ? `${name}.exe` : name);
+}
+
+export function chromeCandidates(configured = "") {
+  const list = [configured, process.env.OD_CHROME || "", process.env.CHROME_PATH || ""];
+  if (IS_WIN) {
+    const drive = process.env.SystemDrive || process.env.HOMEDRIVE || "C:";
+    for (const base of [
+      process.env.ProgramFiles,
+      process.env.ProgramW6432,
+      process.env["ProgramFiles(x86)"],
+      path.join(drive, "Program Files"),
+      path.join(drive, "Program Files (x86)"),
+      process.env.LOCALAPPDATA,
+    ]) {
+      if (base) list.push(path.join(base, "Google", "Chrome", "Application", "chrome.exe"));
+    }
+  } else if (process.platform === "darwin") {
+    list.push("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome");
+  } else {
+    list.push("/usr/bin/google-chrome", "/usr/bin/google-chrome-stable", "/usr/bin/chromium", "/usr/bin/chromium-browser");
+  }
+  return [...new Set(list.map((value) => String(value || "").trim()).filter(Boolean))];
+}
+
+export function findChrome(configured = "") {
+  for (const file of chromeCandidates(configured)) {
+    try {
+      if (fs.statSync(file).isFile()) return file;
+    } catch {}
+  }
+  return "";
+}
+
 export function privatePaths(priv = readPrivate()) {
   const p = priv.paths || {};
   return {
     ...p,
-    python: resolvePath(p.python || path.join(".venv", "Scripts", "python.exe")),
+    python: resolvePath(p.python || venvPython(".venv")),
     ffmpeg: String(p.ffmpeg || "ffmpeg"),
     ffprobe: String(p.ffprobe || "ffprobe"),
     chrome: resolvePath(p.chrome || ""),
@@ -104,8 +141,8 @@ export function privatePaths(priv = readPrivate()) {
     indexttsRepo: resolvePath(p.indexttsRepo || ""),
     indexttsPython: resolvePath(p.indexttsPython || ""),
     indexttsModel: resolvePath(p.indexttsModel || ""),
-    kagglePython: resolvePath(p.kagglePython || path.join("pipeline", "tts", ".venv-kaggle", "Scripts", "python.exe")),
-    kaggleBin: resolvePath(p.kaggleBin || path.join("pipeline", "tts", ".venv-kaggle", "Scripts", "kaggle.exe")),
+    kagglePython: resolvePath(p.kagglePython || venvPython(path.join("pipeline", "tts", ".venv-kaggle"))),
+    kaggleBin: resolvePath(p.kaggleBin || venvPython(path.join("pipeline", "tts", ".venv-kaggle"), "kaggle")),
     kaggleConfigDir: resolvePath(p.kaggleConfigDir || path.join("config", ".kaggle")),
     voiceRef: resolvePath(p.voiceRef || path.join("assets", "voice-ref")),
   };
@@ -147,10 +184,18 @@ export function setupState() {
   const exists = fs.existsSync(PRIVATE_FILE);
   const priv = readPrivate();
   const p = privatePaths(priv);
+  const tts = mergeTtsConfig(readTtsBase(), priv);
+  const provider = tts.provider || "voicestudio";
+  const providerCfg = tts[provider] || {};
+  const voiceValue = provider === "indextts" || provider === "kaggle" ? providerCfg.promptWav : providerCfg.refWav;
+  const voiceFile = resolvePath(voiceValue);
+  const builtinVoice = provider === "edge" || (provider === "cosyvoice" && String(providerCfg.mode || "").toLowerCase() === "sft");
+  const voiceOk = builtinVoice || Boolean(voiceFile && fs.existsSync(voiceFile) && fs.statSync(voiceFile).size > 0);
   const checks = [
     { key: "private", label: "私有化配置", ok: exists, text: exists ? PRIVATE_FILE : "尚未创建" },
     { key: "python", label: "Python", ok: Boolean(p.python && fs.existsSync(p.python)), text: p.python || "未填写" },
     { key: "ffmpeg", label: "FFmpeg", ok: Boolean(p.ffmpeg), text: p.ffmpeg || "未填写" },
+    { key: "voiceSample", label: "样本声音", ok: voiceOk, text: builtinVoice ? "使用引擎内置音色" : voiceOk ? path.basename(voiceFile) : "未上传（请使用自己的声音）" },
     { key: "remotion", label: "Remotion 依赖", ok: fs.existsSync(path.join(ROOT, "remotion", "node_modules", ".bin")), text: "remotion/node_modules" },
     { key: "assets", label: "素材目录", ok: fs.existsSync(path.join(ROOT, "assets")), text: "assets/" },
     { key: "ai", label: "AI 分镜", ok: Boolean(priv.ai?.enabled && (priv.ai?.apiKey || process.env[priv.ai?.keyEnv || ""])), text: priv.ai?.enabled ? `${priv.ai.model || "已配置"}` : "未启用（可跳过）" },
@@ -161,7 +206,7 @@ export function setupState() {
     source: priv.source || "manual",
     privateFile: PRIVATE_FILE,
     paths: p,
-    tts: priv.tts || {},
+    tts,
     kaggle: {
       ...(priv.kaggle || {}),
       key: "",

@@ -9,6 +9,7 @@ models/
 vendor/
 output/
 config/private.json
+pipeline/tts/voicestudio_profiles.json
 .env
 assets/voice-ref/*.wav
 assets/voice-ref/*.mp3

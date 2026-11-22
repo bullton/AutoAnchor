@@ -26,7 +26,9 @@ MAX_FRAME_BYTES = 64 * 1024 * 1024
 SAMPLE_RATE = 24_000
 
 ROOT = HERE.parents[1]
-DEFAULT_PYTHON = Path(os.environ.get("OD_COSYVOICE_PYTHON") or ROOT / "vendor" / "CosyVoice" / ".venv" / "Scripts" / "python.exe")
+VENV_BIN = "Scripts" if os.name == "nt" else "bin"
+PYTHON_EXE = "python.exe" if os.name == "nt" else "python"
+DEFAULT_PYTHON = Path(os.environ.get("OD_COSYVOICE_PYTHON") or ROOT / "vendor" / "CosyVoice" / ".venv" / VENV_BIN / PYTHON_EXE)
 BACKEND_DIR = Path(os.environ.get("OD_VOICESTUDIO_BACKEND") or ROOT / "vendor" / "VoiceStudio" / "backend")
 DEFAULT_SIDECAR = BACKEND_DIR / "engines" / "cosyvoice_subprocess" / "main.py"
 DEFAULT_CHECKOUT = Path(os.environ.get("OD_COSYVOICE_VENDOR") or ROOT / "vendor" / "CosyVoice")

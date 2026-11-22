@@ -3,14 +3,14 @@
   "speakRate": 1,
   "gapSeconds": 0.26,
   "indextts": {
-    "promptWav": "assets/voice-ref/0226_prompt.wav",
+    "promptWav": "",
     "lang": "ZH",
     "device": "",
     "fp32": false,
     "useQwenEmo": false
   },
   "kaggle": {
-    "promptWav": "assets/voice-ref/0226_prompt.wav",
+    "promptWav": "",
     "lang": "ZH",
     "repoRef": "main",
     "modelRepo": "IndexTeam/IndexTTS-2.5",
@@ -28,7 +28,7 @@
     "fp16": true,
     "loadJit": false,
     "loadTrt": false,
-    "refWav": "assets/voice-ref/0226_prompt.wav",
+    "refWav": "",
     "refText": "",
     "speed": 1.1,
     "textFrontend": false,
@@ -38,7 +38,7 @@
     "apiBase": "http://127.0.0.1:3900",
     "model": "cosyvoice",
     "profileId": "",
-    "refWav": "assets/voice-ref/0226_prompt.wav",
+    "refWav": "",
     "refText": "",
     "speed": 1.1,
     "steady": true,
@@ -64,7 +64,7 @@
     "masterGainDb": 2.5
   },
   "local3": {
-    "refWav": "assets/voice-ref/0226_prompt.wav",
+    "refWav": "",
     "refText": "",
     "speed": 1,
     "steady": true,

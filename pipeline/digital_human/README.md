@@ -34,7 +34,7 @@ python run.py
 或者直接指定文件：
 
 ```bash
-python run.py --video D:\videos\me.mp4 --audio D:\audio\voice.wav
+python run.py --video inputs/me.mp4 --audio inputs/voice.wav
 ```
 
 脚本会自动：识别账号（例如 `<你的账号>`）→ 建/更新私有数据集 `<账号>/latentsync-inputs` → 生成并推送 Notebook → 轮询状态 → 下载成片到 `results/<时间戳>/`。

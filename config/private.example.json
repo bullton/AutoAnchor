@@ -3,10 +3,10 @@
   "setupCompleted": false,
   "source": "manual",
   "paths": {
-    "python": ".venv/Scripts/python.exe",
+    "python": "",
     "ffmpeg": "ffmpeg",
     "ffprobe": "ffprobe",
-    "chrome": "C:/Program Files/Google/Chrome/Application/chrome.exe",
+    "chrome": "",
     "modelsRoot": "models",
     "vendorRoot": "vendor",
     "cosyvoiceVendor": "vendor/CosyVoice",
@@ -15,8 +15,8 @@
     "indexttsRepo": "",
     "indexttsPython": "",
     "indexttsModel": "",
-    "kagglePython": "pipeline/tts/.venv-kaggle/Scripts/python.exe",
-    "kaggleBin": "pipeline/tts/.venv-kaggle/Scripts/kaggle.exe",
+    "kagglePython": "",
+    "kaggleBin": "",
     "kaggleConfigDir": "config/.kaggle",
     "voiceRef": "assets/voice-ref"
   },
@@ -34,16 +34,22 @@
     "provider": "voicestudio",
     "voicestudio": {
       "apiBase": "http://127.0.0.1:3900",
-      "refWav": "assets/voice-ref/0226_prompt.wav"
+      "refWav": "",
+      "refText": ""
     },
     "indextts": {
-      "refWav": "assets/voice-ref/0226_prompt.wav"
+      "promptWav": ""
     },
     "cosyvoice": {
-      "refWav": "assets/voice-ref/0226_prompt.wav"
+      "refWav": "",
+      "refText": ""
     },
     "local3": {
-      "refWav": "assets/voice-ref/0226_prompt.wav"
+      "refWav": "",
+      "refText": ""
+    },
+    "kaggle": {
+      "promptWav": ""
     }
   },
   "ai": {

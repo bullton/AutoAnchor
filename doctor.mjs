@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import net from "node:net";
+import os from "node:os";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { privateAi, privatePaths, readPrivate, readTtsBase, mergeTtsConfig, PRIVATE_FILE } from "./pipeline/private.mjs";
@@ -49,13 +50,19 @@ add("ffprobe", "FFprobe", Boolean(run(local.ffprobe, ["-version"])), run(local.f
 add("remotion", "Remotion 依赖", fs.existsSync(path.join(ROOT, "remotion", "node_modules", ".bin")), "remotion/node_modules", true);
 add("script", "文案目录", fs.existsSync(path.join(ROOT, "input")), "input/");
 add("assets", "素材目录", fs.existsSync(path.join(ROOT, "assets")), "assets/");
-add("voice", "参考音色", fs.existsSync(path.join(ROOT, "assets", "voice-ref")), local.voiceRef);
+const voiceProvider = tts.provider || "voicestudio";
+const voiceCfg = tts[voiceProvider] || {};
+const voiceValue = voiceProvider === "indextts" || voiceProvider === "kaggle" ? voiceCfg.promptWav : voiceCfg.refWav;
+const voiceFile = voiceValue ? (path.isAbsolute(voiceValue) ? voiceValue : path.join(ROOT, voiceValue)) : "";
+const builtinVoice = voiceProvider === "edge" || (voiceProvider === "cosyvoice" && String(voiceCfg.mode || "").toLowerCase() === "sft");
+const voiceOk = builtinVoice || Boolean(voiceFile && exists(voiceFile));
+add("voice", "样本声音", voiceOk, builtinVoice ? "使用引擎内置音色" : voiceOk ? voiceFile : "未上传（请在 npm run setup 中提供自己的声音）", !builtinVoice);
 add("models", "模型目录", fs.existsSync(local.modelsRoot), local.modelsRoot);
 add("vendor", "依赖目录", fs.existsSync(local.vendorRoot), local.vendorRoot);
 add("voicestudio", "VoiceStudio", fs.existsSync(path.join(local.voiceStudioRoot, "server.env.json")), local.voiceStudioRoot);
 add("provider", "配音方案", Boolean(tts.provider), tts.provider || "未设置");
 const kaggle = priv.kaggle || {};
-const kaggleDirs = [local.kaggleConfigDir, process.env.KAGGLE_CONFIG_DIR || "", path.join(process.env.USERPROFILE || "", ".kaggle")].filter(Boolean);
+const kaggleDirs = [local.kaggleConfigDir, process.env.KAGGLE_CONFIG_DIR || "", path.join(os.homedir(), ".kaggle")].filter(Boolean);
 const kaggleCred = Boolean(String(kaggle.username || "").trim() && String(kaggle.key || kaggle.token || "").trim())
   || kaggleDirs.some((dir) => ["kaggle.json", "access_token"].some((name) => fs.existsSync(path.join(dir, name))));
 add("kaggle-cli", "Kaggle CLI", exists(local.kaggleBin), local.kaggleBin);

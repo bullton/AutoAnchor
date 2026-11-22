@@ -107,18 +107,54 @@
               <span>副标题</span>
               <input id="seriesTagline" type="text" maxlength="28" placeholder="一句话说明这期看点" />
             </label>
-            <label class="field">
-              <span>数字人参考 / 出镜素材</span>
-              <select id="inputAvatarSelect"><option value="">不使用数字人</option></select>
-            </label>
-            <label class="field">
+            <div class="field">
               <span>配音音色</span>
-              <select id="inputVoiceSelect"></select>
-            </label>
-            <div class="io-materials">
-              <span>素材与章节</span>
-              <b id="inputMaterialSummary">0 张 · 0 章</b>
-              <button class="btn tiny ghost" data-tab="style" type="button">去整理</button>
+              <div class="inline">
+                <select id="inputVoiceSelect"></select>
+                <button class="btn tiny ghost" id="inputVoiceUploadBtn" type="button">上传音色</button>
+              </div>
+              <span class="io-media-note">支持 wav / mp3 / m4a / flac，上传后可截取参考片段</span>
+            </div>
+            <div class="io-media io-avatar">
+              <span class="io-media-label">数字人参考 / 出镜素材</span>
+              <div class="io-media-row">
+                <div class="io-thumb" id="inputAvatarPreview"><span class="io-thumb-empty">未选择</span></div>
+                <div class="io-media-body">
+                  <select id="inputAvatarSelect"><option value="">不使用数字人</option></select>
+                  <div class="io-media-actions">
+                    <label class="btn tiny ghost file-btn">
+                      上传视频 / 头像
+                      <input type="file" id="inputAvatarUpload" accept=".png,.jpg,.jpeg,.webp,.mp4,.webm,.mov" hidden />
+                    </label>
+                  </div>
+                  <span class="io-media-note" id="inputAvatarNote">可上传参考视频或头像图片</span>
+                </div>
+              </div>
+            </div>
+            <div class="io-media io-material-input">
+              <div class="io-material-head">
+                <span class="io-media-label">素材</span>
+                <b id="inputMaterialSummary">0 张 · 0 章</b>
+                <span class="io-chip" id="inputMaterialChapter">未分章</span>
+                <button class="btn tiny ghost" data-tab="style" type="button">去整理</button>
+              </div>
+              <div class="io-media-row">
+                <div class="io-thumb io-thumb-wide" id="inputMaterialPreview"><span class="io-thumb-empty">还没有素材</span></div>
+                <div class="io-media-body">
+                  <input id="inputMaterialName" type="text" maxlength="80" placeholder="只改名称，扩展名保持不变" disabled />
+                  <div class="io-media-actions">
+                    <button class="btn tiny" id="inputMaterialRename" type="button" disabled>保存名称</button>
+                    <button class="btn tiny ghost" id="inputMaterialPrev" type="button" disabled>上一张</button>
+                    <span class="io-media-pos" id="inputMaterialPos">0 / 0</span>
+                    <button class="btn tiny ghost" id="inputMaterialNext" type="button" disabled>下一张</button>
+                    <label class="btn tiny ghost file-btn">
+                      上传素材
+                      <input type="file" id="inputMaterialUpload" accept=".png,.jpg,.jpeg,.webp" multiple hidden />
+                    </label>
+                  </div>
+                  <span class="io-media-note">一次显示一张。重命名只改名称，扩展名保持不变；重新分镜时按名称/章节匹配配图。</span>
+                </div>
+              </div>
             </div>
           </div>
           <p class="io-hint">这些输入会写入本次 Job；也可以直接在 Agent 里用一句话调用同一套流水线。</p>

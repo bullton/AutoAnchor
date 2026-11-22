@@ -39,7 +39,7 @@
         </div>
         <div class="field-grid">
           <label class="field wide">Python 可执行文件
-            <input id="pathPython" class="mono" placeholder="例如 C:/AI/.venv/Scripts/python.exe" />
+            <input id="pathPython" class="mono" placeholder="自动检测；可填 .venv/Scripts/python.exe 或 .venv/bin/python" />
             <small>用于配音阶段，建议指向已装好依赖的虚拟环境。</small>
           </label>
           <label class="field">FFmpeg
@@ -49,13 +49,13 @@
             <input id="pathFfprobe" class="mono" placeholder="ffprobe" />
           </label>
           <label class="field wide">Chrome（真实预览时可选）
-            <input id="pathChrome" class="mono" placeholder="C:/Program Files/Google/Chrome/Application/chrome.exe" />
+            <input id="pathChrome" class="mono" placeholder="自动检测；可留空" />
           </label>
           <label class="field wide">Kaggle Python
-            <input id="pathKagglePython" class="mono" placeholder="pipeline/tts/.venv-kaggle/Scripts/python.exe" />
+            <input id="pathKagglePython" class="mono" placeholder="自动检测；可留空" />
           </label>
           <label class="field wide">Kaggle CLI
-            <input id="pathKaggleBin" class="mono" placeholder="pipeline/tts/.venv-kaggle/Scripts/kaggle.exe" />
+            <input id="pathKaggleBin" class="mono" placeholder="自动检测；可留空" />
           </label>
         </div>
         <div class="check-list" id="runtimeChecks"></div>
@@ -71,16 +71,16 @@
         </div>
         <div class="field-grid">
           <label class="field wide">模型根目录
-            <input id="pathModels" class="mono" placeholder="例如 C:/AI/models" />
+            <input id="pathModels" class="mono" placeholder="models（项目内）或已有模型目录" />
           </label>
           <label class="field wide">依赖根目录
-            <input id="pathVendor" class="mono" placeholder="例如 C:/AI/vendor" />
+            <input id="pathVendor" class="mono" placeholder="vendor（项目内）或已有依赖目录" />
           </label>
           <label class="field wide">VoiceStudio
             <input id="pathVoiceStudio" class="mono" placeholder="vendor/VoiceStudio" />
           </label>
           <label class="field wide">IndexTTS 仓库（可选）
-            <input id="pathIndextts" class="mono" placeholder="例如 C:/AI/vendor/indextts" />
+            <input id="pathIndextts" class="mono" placeholder="vendor/indextts（可选）" />
           </label>
           <label class="field wide">参考音色目录
             <input id="pathVoiceRef" class="mono" placeholder="assets/voice-ref" />
@@ -112,8 +112,17 @@
           <label class="field wide">VoiceStudio 服务地址
             <input id="vsApiBase" class="mono" placeholder="http://127.0.0.1:3900" />
           </label>
-          <label class="field wide">参考音频（相对项目）
-            <input id="ttsRefWav" class="mono" placeholder="assets/voice-ref/0226_prompt.wav" />
+          <div class="field wide">
+            <label>样本声音（必须是你自己的声音）</label>
+            <div class="voice-upload">
+              <input id="ttsRefFile" type="file" accept=".wav,.mp3,.m4a,.flac,audio/*" />
+              <button class="btn ghost" id="ttsUploadBtn" type="button">上传并使用</button>
+            </div>
+            <input id="ttsRefWav" class="mono" placeholder="上传后自动填写，也可手动输入项目内路径" />
+            <small>建议 3-10 秒、干净无背景音乐的人声；超过 12 秒会截取前 12 秒。文件保存在参考音色目录，不会进入仓库；Edge 方案无需样本。</small>
+          </div>
+          <label class="field wide">样本朗读文本（可选）
+            <textarea id="ttsRefText" rows="3" placeholder="填写样本里说的原话，需与最终片段一致；留空则由引擎尝试自动识别。"></textarea>
           </label>
         </div>
       </section>

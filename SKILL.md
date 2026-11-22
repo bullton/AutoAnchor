@@ -34,7 +34,8 @@ SKILL.md          本文件
    ```
 2. 首次配置，任选一种：
    - 运行 `npm start`，浏览器打开 `http://127.0.0.1:4310`，未配置时会自动进入首次配置页；
-   - 或在终端运行 `npm run setup`，按提示填写 Python、FFmpeg、模型目录、Kaggle 数字人和 AI 接口。
+   - 或在终端运行 `npm run setup`，按提示填写 Python、FFmpeg、模型目录、自己的样本声音、Kaggle 数字人和 AI 接口。
+   - 样本声音必须是用户自己的录音（建议 3-10 秒、干净人声），保存在 `assets/voice-ref/`，不会进入仓库；没有样本时不能使用克隆类配音方案。
 3. 体检：
    ```powershell
    npm run doctor
@@ -84,7 +85,7 @@ node agent/run.mjs --job job.json
   "seriesTitle": "终端运维自动化",
   "seriesTagline": "一组真实数据，算清半年回本",
   "provider": "voicestudio",
-  "voice": "0226_prompt.wav",
+  "voice": "your-voice.wav",
   "styleId": "amber",
   "motion": "standard",
   "gapSeconds": 0.26,
@@ -135,7 +136,7 @@ node agent/run.mjs --job job.json
 `config/private.json` 的完整结构见 `config/private.example.json`。关键分组：
 
 - `paths`：Python、FFmpeg、Chrome、模型根目录、依赖根目录、VoiceStudio、IndexTTS、Kaggle Python/CLI、参考音色目录
-- `tts`：按 provider 覆盖配音参数；路径可写绝对路径，也可写项目相对路径
+- `tts`：按 provider 覆盖配音参数；`refWav`/`promptWav` 指向用户自己的样本声音，`refText` 是样本朗读文本；这些字段只写私有配置，不进入 `pipeline/tts/config.json`
 - `kaggle`：用户名、API Key / Token、数据集、Notebook、加速器与等待上限；也可使用本机 `~/.kaggle/kaggle.json`
 - `ai`：OpenAI 兼容接口地址、模型、Key；也可只写 `keyEnv` 从环境变量取
 
@@ -145,13 +146,14 @@ node agent/run.mjs --job job.json
 
 - WorkBuddy 官方文档没有提供“项目内服务直接读取当前会话模型凭证”的接口，因此**不能**从流水线里直接调用 Agent 当前会话模型。
 - 在 WorkBuddy 里由 Agent 执行本 Skill 时，语义理解天然使用当前会话模型；Agent 负责生成 Job Spec 和调用命令。
-- 页面里的 AI 分镜需要独立配置。首次配置页支持从本机 WorkBuddy 自定义模型配置导入（本地 `models.json`，常见位置 `%USERPROFILE%\.workbuddy\models.json`）；导入后密钥只写入私有配置，不回显到页面。
+- 页面里的 AI 分镜需要独立配置。首次配置页支持从本机 WorkBuddy 自定义模型配置导入（本地 `models.json`，常见位置 `~/.workbuddy/models.json`，Windows 也可为 `%USERPROFILE%\.workbuddy\models.json`）；导入后密钥只写入私有配置，不回显到页面。
 - 也可以手动填写任意 OpenAI 兼容接口（DeepSeek、通义、Ollama 等）。
 
 ## 故障排查
 
 - **页面打不开**：确认 `npm start` 正在运行，默认 `http://127.0.0.1:4310`。
 - **Python 未找到**：运行 `npm run setup`，把 Python 指向已安装 TTS 依赖的虚拟环境。
+- **缺少样本声音**：在首次配置页上传自己的 3-10 秒录音，或在 `npm run setup` 中填写样本路径；不要使用他人音色。
 - **VoiceStudio 未启动**：在配音页点“现在启动”，或确认 `paths.voiceStudioRoot/server.env.json` 配置正确。
 - **渲染失败**：运行 `npm --prefix remotion install`；首次渲染可能需要下载 Chromium。
 - **AI 分镜回退规则版**：检查 `config/private.json` 的 `ai.enabled`、Key 或 `keyEnv`；失败不会阻塞出片。
@@ -160,6 +162,6 @@ node agent/run.mjs --job job.json
 
 ## 安全
 
-- 不把 `config/private.json`、`.env`、参考音频、成片提交到仓库。
+- 不把 `config/private.json`、`.env`、参考音频、VoiceStudio 音色缓存、成片提交到仓库。
 - 页面和 Agent 日志不应打印密钥；服务端返回 AI 配置时会自动隐藏 Key。
-- 分享项目时只保留 `config/private.example.json` 和示例素材。
+- 分享项目时只保留 `config/private.example.json` 和示例素材；每个使用者首次配置时提供自己的样本声音。

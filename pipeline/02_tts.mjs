@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import { paths, ROOT } from "./config.mjs";
-import { mergeTtsConfig, privatePaths } from "./private.mjs";
+import { mergeTtsConfig, privatePaths, venvPython } from "./private.mjs";
 
 const outDir = process.env.OD_OUTPUT_DIR
   ? path.resolve(ROOT, process.env.OD_OUTPUT_DIR)
@@ -25,7 +25,7 @@ const child = spawn(paths.python, args, {
     OD_COSYVOICE_VENDOR: local.cosyvoiceVendor,
     OD_COSYVOICE_MODEL: local.cosyvoiceModel,
     OD_COSYVOICE3_MODEL: path.join(local.modelsRoot, "Fun-CosyVoice3-0.5B"),
-    OD_COSYVOICE_PYTHON: path.join(local.cosyvoiceVendor, ".venv", "Scripts", "python.exe"),
+    OD_COSYVOICE_PYTHON: venvPython(path.join(local.cosyvoiceVendor, ".venv")),
     OD_INDEXTTS_REPO: local.indexttsRepo,
     OD_INDEXTTS_PYTHON: local.indexttsPython,
     OD_VOICEREF: local.voiceRef,
