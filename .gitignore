@@ -60,3 +60,6 @@ pipeline/photo-overrides.json
 pipeline/scene-layouts.json
 pipeline/motion.json
 pipeline/ai.json
+
+# Local agent workspace (skills / memory / per-machine notes)
+.workbuddy/

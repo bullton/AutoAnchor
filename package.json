@@ -8,6 +8,8 @@
     "start": "node server.mjs",
     "setup": "node setup.mjs",
     "doctor": "node doctor.mjs",
+    "setup:kaggle": "node scripts/install-kaggle-cli.mjs",
+    "preflight": "node scripts/preflight.mjs",
     "agent": "node agent/run.mjs",
     "make": "node pipeline/run.mjs",
     "storyboard": "node pipeline/01_storyboard.mjs",
