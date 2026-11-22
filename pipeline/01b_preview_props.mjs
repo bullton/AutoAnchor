@@ -23,12 +23,9 @@ const motionConfig = readMotion();
 const scriptHash =
   payload?.meta?.scriptHash ||
   (() => {
-    try {
-      const raw = fs.readFileSync(files.script, "utf8");
-      return crypto.createHash("sha1").update(raw.replace(/\s+/g, "")).digest("hex").slice(0, 16);
-    } catch {
-      return "";
-    }
+    const speech = (Array.isArray(payload?.slides) ? payload.slides : []).map((slide) => String(slide?.speech || "")).join("");
+    if (!speech.trim()) return "";
+    return crypto.createHash("sha1").update(speech.replace(/\s+/g, "")).digest("hex").slice(0, 16);
   })();
 
 const photoDir = path.join(paths.root, "assets", "photos");

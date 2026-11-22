@@ -371,7 +371,6 @@ const parsePercents = (scene: SceneData) => {
 };
 
 export const BarsLayout: React.FC<{ scene: SceneData }> = ({ scene }) => {
-  const box = useSafeBox();
   const { frame, spread } = useSceneTiming(scene);
   const rows = parsePercents(scene);
   if (rows.length < 2) {
@@ -391,14 +390,7 @@ export const BarsLayout: React.FC<{ scene: SceneData }> = ({ scene }) => {
       />
       <TitleBar kicker={scene.kicker} title={scene.title} overlay={Boolean(scene.photo)} />
       <Body style={{ justifyContent: "center" }}>
-        <Headline
-          text={twoLine(scene.title)}
-          start={8}
-          size={fitTitle(scene.title, 54, box.width)}
-          align="center"
-          maxWidth="100%"
-        />
-        <div style={{ marginTop: 40, width: "100%" }}>
+        <div style={{ marginTop: 0, width: "100%" }}>
           {rows.map((row, i) => (
             <BarRow
               key={`${row.label}-${i}`}
@@ -436,14 +428,7 @@ export const CompareLayout: React.FC<{ scene: SceneData }> = ({ scene }) => {
       />
       <TitleBar kicker={scene.kicker} title={scene.title} overlay={Boolean(scene.photo)} />
       <Body style={{ justifyContent: "center" }}>
-        <Headline
-          text={twoLine(scene.title)}
-          start={8}
-          size={fitTitle(scene.title, 52, box.width)}
-          align="center"
-          maxWidth="100%"
-        />
-        <div style={{ display: "flex", gap: 18, width: "100%", marginTop: 44, flexDirection: stacked ? "column" : "row" }}>
+        <div style={{ display: "flex", gap: 18, width: "100%", marginTop: 0, flexDirection: stacked ? "column" : "row" }}>
           {sides.map((text, i) => {
             const anim = i === 0 ? fadeSlideLeft(frame, spread(i, 2), 20) : fadeSlideRight(frame, spread(i, 2), 20);
             return (
@@ -488,7 +473,6 @@ export const CompareLayout: React.FC<{ scene: SceneData }> = ({ scene }) => {
 };
 
 export const ListLayout: React.FC<{ scene: SceneData }> = ({ scene }) => {
-  const box = useSafeBox();
   const { frame, cueAt } = useSceneTiming(scene);
   const { palette } = useStyle();
   const items = (scene.bullets.length ? scene.bullets : scene.lines).slice(0, 3);
@@ -561,7 +545,6 @@ export const ListLayout: React.FC<{ scene: SceneData }> = ({ scene }) => {
 };
 
 export const AbstractLayout: React.FC<{ scene: SceneData }> = ({ scene }) => {
-  const box = useSafeBox();
   const { frame, cueAt } = useSceneTiming(scene);
   const { palette } = useStyle();
   return (
@@ -581,16 +564,9 @@ export const AbstractLayout: React.FC<{ scene: SceneData }> = ({ scene }) => {
       )}
       <TitleBar kicker={scene.kicker} title={scene.title} overlay={Boolean(scene.photo)} />
       <Body style={{ justifyContent: "center" }}>
-        <Headline
-          text={twoLine(scene.title)}
-          start={8}
-          size={fitTitle(scene.title, 58, box.width)}
-          align="center"
-          maxWidth="100%"
-        />
         <div
           style={{
-            marginTop: 40,
+            marginTop: 0,
             display: "flex",
             flexDirection: "column",
             gap: 22,
@@ -696,8 +672,9 @@ export const ClosingLayout: React.FC<{ scene: SceneData }> = ({ scene }) => {
               marginTop: 58,
               padding: "24px 52px",
               borderRadius: 999,
-              background: `${palette.accent}1F`,
-              color: palette.accent,
+              background: palette.accent,
+              color: palette.bg,
+              boxShadow: `0 10px 30px ${palette.accent}33`,
               fontSize: 36,
               fontWeight: 700,
               letterSpacing: 2,

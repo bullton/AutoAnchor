@@ -28,17 +28,26 @@ const args = [
   "--concurrency=2",
 ];
 
-console.log("渲染中（首次会下载 Chromium，请耐心等待）...");
-const child = spawn(bin, args, {
-  cwd: paths.remotion,
-  stdio: "inherit",
-  shell: process.platform === "win32",
-});
+function renderOnce() {
+  return new Promise((resolve) => {
+    const child = spawn(bin, args, {
+      cwd: paths.remotion,
+      stdio: "inherit",
+      shell: process.platform === "win32",
+    });
+    child.on("exit", (code) => resolve(code ?? 1));
+  });
+}
 
-child.on("exit", (code) => {
-  if (code !== 0) {
-    console.error(`渲染失败，退出码 ${code}`);
-    process.exit(code ?? 1);
-  }
-  console.log(`渲染完成：${files.silentVideo}`);
-});
+console.log("渲染中（首次会下载 Chromium，请耐心等待）...");
+let code = await renderOnce();
+if (code !== 0) {
+  console.log("");
+  console.log("首次渲染失败，常见原因是 Chromium 首次下载超过 30s 超时；自动重试一次...");
+  code = await renderOnce();
+}
+if (code !== 0) {
+  console.error(`渲染失败，退出码 ${code}`);
+  process.exit(code ?? 1);
+}
+console.log(`渲染完成：${files.silentVideo}`);

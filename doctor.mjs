@@ -47,6 +47,15 @@ add("private", "私有配置", fs.existsSync(PRIVATE_FILE), fs.existsSync(PRIVAT
 add("python", "Python", exists(local.python), exists(local.python) ? run(local.python, ["--version"]) || local.python : local.python, true);
 add("ffmpeg", "FFmpeg", Boolean(run(local.ffmpeg, ["-version"])), run(local.ffmpeg, ["-version"]).split(/\r?\n/)[0] || local.ffmpeg, true);
 add("ffprobe", "FFprobe", Boolean(run(local.ffprobe, ["-version"])), run(local.ffprobe, ["-version"]).split(/\r?\n/)[0] || local.ffprobe);
+const filterList = run(local.ffmpeg, ["-hide_banner", "-filters"]);
+const hasSubtitles = /\bsubtitles\b/.test(filterList) && /\bass\b/.test(filterList);
+add(
+  "ffmpeg-libass",
+  "字幕滤镜",
+  hasSubtitles,
+  hasSubtitles ? "subtitles / ass 可用" : "缺少 subtitles 滤镜：换 ffmpeg-static（vendor/ffmpeg）或在 preflight 里检查",
+  true,
+);
 add("remotion", "Remotion 依赖", fs.existsSync(path.join(ROOT, "remotion", "node_modules", ".bin")), "remotion/node_modules", true);
 add("script", "文案目录", fs.existsSync(path.join(ROOT, "input")), "input/");
 add("assets", "素材目录", fs.existsSync(path.join(ROOT, "assets")), "assets/");
@@ -56,7 +65,23 @@ const voiceValue = voiceProvider === "indextts" || voiceProvider === "kaggle" ? 
 const voiceFile = voiceValue ? (path.isAbsolute(voiceValue) ? voiceValue : path.join(ROOT, voiceValue)) : "";
 const builtinVoice = voiceProvider === "edge" || (voiceProvider === "cosyvoice" && String(voiceCfg.mode || "").toLowerCase() === "sft");
 const voiceOk = builtinVoice || Boolean(voiceFile && exists(voiceFile));
+const absVoice = (value) => (value ? (path.isAbsolute(value) ? value : path.join(ROOT, value)) : "");
+const cloneVoice = ["voicestudio", "cosyvoice", "local3", "indextts", "kaggle"]
+  .map((key) => absVoice(tts[key]?.refWav || tts[key]?.promptWav))
+  .find((file) => file && exists(file));
+const cloneConflict = builtinVoice && Boolean(cloneVoice);
 add("voice", "样本声音", voiceOk, builtinVoice ? "使用引擎内置音色" : voiceOk ? voiceFile : "未上传（请在 npm run setup 中提供自己的声音）", !builtinVoice);
+if (cloneConflict) {
+  add(
+    "voice-clone",
+    "克隆音色",
+    false,
+    `已上传 ${cloneVoice}，但当前方案 ${voiceProvider} 不支持克隆，成片不会使用这个音色；请改用 local3 / voicestudio / indextts / kaggle`,
+    false,
+  );
+} else if (cloneVoice) {
+  add("voice-clone", "克隆音色", true, cloneVoice);
+}
 add("models", "模型目录", fs.existsSync(local.modelsRoot), local.modelsRoot);
 add("vendor", "依赖目录", fs.existsSync(local.vendorRoot), local.vendorRoot);
 add("voicestudio", "VoiceStudio", fs.existsSync(path.join(local.voiceStudioRoot, "server.env.json")), local.voiceStudioRoot);

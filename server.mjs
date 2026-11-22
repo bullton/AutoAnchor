@@ -840,7 +840,23 @@ function readJson(file, fallback) {
 
 function writeJson(file, value) {
   fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.writeFileSync(file, JSON.stringify(value, null, 2), "utf8");
+  fs.writeFileSync(file, `${JSON.stringify(value, null, 2)}\n`, "utf8");
+}
+
+function deepMerge(base, patch) {
+  const out = base && typeof base === "object" && !Array.isArray(base) ? { ...base } : {};
+  for (const [key, value] of Object.entries(patch || {})) {
+    const current = out[key];
+    if (
+      value && typeof value === "object" && !Array.isArray(value)
+      && current && typeof current === "object" && !Array.isArray(current)
+    ) {
+      out[key] = deepMerge(current, value);
+    } else if (value !== undefined) {
+      out[key] = value;
+    }
+  }
+  return out;
 }
 
 function ttsBase() {
@@ -851,9 +867,32 @@ function ttsMerged() {
   return mergeTtsConfig(ttsBase(), readPrivate());
 }
 
+function propsSlidesConsistent(dir) {
+  const props = readJson(path.join(dir, "props.json"), null);
+  const slides = readJson(path.join(dir, "slides.json"), null);
+  if (!props || !slides) return false;
+  const propsHash = String(props?.meta?.scriptHash || "");
+  const slidesHash = String(slides?.meta?.scriptHash || "");
+  if (!propsHash || !slidesHash || propsHash !== slidesHash) return false;
+  const sceneCorpus = normalizeScriptText(
+    (Array.isArray(props.scenes) ? props.scenes : [])
+      .map((scene) => {
+        const cues = Array.isArray(scene?.cues) ? scene.cues : [];
+        return cues.length ? cues.map((cue) => cue?.text || "").join("") : String(scene?.speech || "");
+      })
+      .join(""),
+  );
+  const slideCorpus = normalizeScriptText(
+    (Array.isArray(slides.slides) ? slides.slides : []).map((slide) => slide?.speech || "").join(""),
+  );
+  if (!sceneCorpus || !slideCorpus || sceneCorpus !== slideCorpus) return false;
+  return true;
+}
+
 function syncRunArtifact(job, name) {
   const src = path.join(job.dir, name);
   if (!fileOk(src, 2)) return false;
+  if (name === "props.json" && !propsSlidesConsistent(job.dir)) return false;
   const dst = name === "props.json" ? PROPS_FILE : name === "slides.json" ? SLIDES_FILE : path.join(PIPELINE_ROOT, "output", name);
   try {
     fs.mkdirSync(path.dirname(dst), { recursive: true });
@@ -876,6 +915,7 @@ function hydrateGlobalFromLatestRun() {
     for (const id of fs.readdirSync(RUNS_DIR)) {
       const file = path.join(RUNS_DIR, id, "props.json");
       if (!fileOk(file, 2)) continue;
+      if (!propsSlidesConsistent(path.join(RUNS_DIR, id))) continue;
       const mtime = fs.statSync(file).mtimeMs;
       if (!best || mtime > best.mtime) best = { dir: path.join(RUNS_DIR, id), mtime };
     }
@@ -938,6 +978,9 @@ function currentScriptHash() {
 function storyboardStatus() {
   const props = readJson(PROPS_FILE, null);
   const scenes = Array.isArray(props?.scenes) ? props.scenes : [];
+  const slidesPayload = readJson(SLIDES_FILE, null);
+  const slides = Array.isArray(slidesPayload?.slides) ? slidesPayload.slides : [];
+  const slidesHash = String(slidesPayload?.meta?.scriptHash || "");
   const scriptText = normalizeScriptText(loadScript());
   const hash = currentScriptHash();
   if (!scenes.length) {
@@ -961,6 +1004,19 @@ function storyboardStatus() {
   const hasMaterialState = Boolean(materialsNow || propsMaterialsHash);
   const materialsStale = hasMaterialState && propsMaterialsHash !== materialsNow;
   const sceneIds = scenes.map((scene) => String(scene.id || ""));
+  const sceneCorpus = normalizeScriptText(
+    scenes
+      .map((scene) => {
+        const cues = Array.isArray(scene?.cues) ? scene.cues : [];
+        return cues.length ? cues.map((cue) => cue?.text || "").join("") : String(scene?.speech || "");
+      })
+      .join(""),
+  );
+  const slideCorpus = normalizeScriptText(slides.map((slide) => slide?.speech || "").join(""));
+  const slidesMismatch =
+    Boolean(slides.length) &&
+    ((Boolean(slidesHash) && Boolean(metaHash) && slidesHash !== metaHash) ||
+      (Boolean(sceneCorpus) && Boolean(slideCorpus) && sceneCorpus !== slideCorpus));
   let stale = false;
   if (metaHash) {
     stale = metaHash !== hash;
@@ -983,6 +1039,7 @@ function storyboardStatus() {
     stale = windows.length ? hits < 2 : true;
   }
   if (materialsStale) stale = true;
+  if (slidesMismatch) stale = true;
   const config = motionLib.readMotion();
   const source = config.source || null;
   const sceneIdsChanged = Boolean(source?.sceneIds?.length) && source.sceneIds.join("|") !== sceneIds.join("|");
@@ -993,9 +1050,16 @@ function storyboardStatus() {
   return {
     stale,
     empty: false,
-    reason: materialsStale && metaHash === hash ? "materials-changed" : stale ? "script-changed" : "ok",
+    reason: slidesMismatch
+      ? "storyboard-mismatch"
+      : materialsStale && metaHash === hash
+        ? "materials-changed"
+        : stale
+          ? "script-changed"
+          : "ok",
     currentHash: hash,
     propsHash: metaHash || null,
+    slidesHash: slidesHash || null,
     sceneIds,
     sceneIdsChanged,
     planStale,
@@ -1429,6 +1493,45 @@ function envStatus(tts) {
   ];
 }
 
+const COSY_FILES = ["llm.pt", "flow.pt", "hift.pt", "speech_tokenizer_v2.onnx"];
+
+function providerReady(key, local = privatePaths(), tts = ttsMerged()) {
+  if (key === "edge") return true;
+  if (key === "voicestudio") return fs.existsSync(path.join(local.voiceStudioRoot, "server.env.json"));
+  if (key === "cosyvoice") {
+    const dir = path.resolve(tts.cosyvoice?.modelPath || local.cosyvoiceModel);
+    return COSY_FILES.every((name) => fileOk(path.join(dir, name), 1024));
+  }
+  if (key === "local3") {
+    const dir = path.resolve(tts.local3?.modelDir || tts.local3?.modelPath || path.join(local.modelsRoot, "Fun-CosyVoice3-0.5B"));
+    return COSY_FILES.every((name) => fileOk(path.join(dir, name), 1024));
+  }
+  if (key === "indextts") {
+    const repo = path.resolve(tts.indextts?.repoPath || local.indexttsRepo || "");
+    const dir = path.resolve(tts.indextts?.modelDir || local.indexttsModel || path.join(repo, "checkpoints"));
+    return fileOk(path.join(dir, "config.yaml"));
+  }
+  if (key === "kaggle") {
+    const bin = path.resolve(local.kaggleBin || tts.kaggle?.kaggleBin || "kaggle");
+    return binOk(bin) && kaggleToken();
+  }
+  return false;
+}
+
+function providerReason(key, local = privatePaths()) {
+  if (key === "edge") return "";
+  if (key === "voicestudio") return `未找到 ${path.join(local.voiceStudioRoot, "server.env.json")}`;
+  if (key === "cosyvoice") return "CosyVoice2 权重不完整";
+  if (key === "local3") return "CosyVoice3 权重不完整";
+  if (key === "indextts") return "IndexTTS 未安装或模型不完整";
+  if (key === "kaggle") return "缺少 Kaggle CLI 或凭据";
+  return "未知方案";
+}
+
+function recommendedProvider() {
+  return ["voicestudio", "local3", "cosyvoice", "indextts", "kaggle"].find((key) => providerReady(key)) || "edge";
+}
+
 function sanitizeAi(raw = {}) {
   const base = String(raw.baseUrl || "https://api.openai.com/v1").trim().replace(/\/+$/, "");
   const envName = /^[A-Z][A-Z0-9_]{2,}$/;
@@ -1475,7 +1578,9 @@ function stripPrivateTts(tts = {}) {
   const out = JSON.parse(JSON.stringify(tts));
   for (const value of Object.values(out)) {
     if (!value || typeof value !== "object") continue;
-    for (const key of PRIVATE_TTS_FIELDS) delete value[key];
+    for (const key of PRIVATE_TTS_FIELDS) {
+      if (key in value) value[key] = "";
+    }
   }
   return out;
 }
@@ -1514,21 +1619,19 @@ function currentConfigs() {
 
 function saveConfig(payload) {
   const before = ttsBase();
-  const tts = { ...before };
+  const tts = deepMerge({}, before);
   const provider = PROVIDER_IDS.has(payload.provider) ? payload.provider : tts.provider || "kaggle";
   tts.provider = provider;
-  tts.speakRate = 1;
+  const speakRate = Number(payload.speakRate);
+  if (Number.isFinite(speakRate) && speakRate > 0) tts.speakRate = speakRate;
   const uiIn = payload.ui || {};
   const gap = Number(payload.gapSeconds);
   tts.gapSeconds = Number.isFinite(gap) ? gap : (Number(uiIn.gap) || 0.26);
 
   const voice = payload.voice || "";
-  if (payload.kaggle) tts.kaggle = { ...(tts.kaggle || {}), ...payload.kaggle };
-  if (payload.cosyvoice) tts.cosyvoice = { ...(tts.cosyvoice || {}), ...payload.cosyvoice };
-  if (payload.voicestudio) tts.voicestudio = { ...(tts.voicestudio || {}), ...payload.voicestudio };
-  if (payload.local3) tts.local3 = { ...(tts.local3 || {}), ...payload.local3 };
-  if (payload.indextts) tts.indextts = { ...(tts.indextts || {}), ...payload.indextts };
-  if (payload.edge) tts.edge = { ...(tts.edge || {}), ...payload.edge };
+  for (const key of ["kaggle", "cosyvoice", "voicestudio", "local3", "indextts", "edge"]) {
+    if (payload[key]) tts[key] = deepMerge(tts[key], payload[key]);
+  }
   if (voice && provider !== "edge") {
     const absVoice = path.isAbsolute(voice) ? voice : path.join(VOICE_DIR, voice);
     const voicePath = publicVoicePath(absVoice);
@@ -1566,6 +1669,8 @@ function saveConfig(payload) {
   if (digitalHuman.enabled) {
     layout.mode = "video";
     if (!digitalHuman.reference && layout.avatar.src) digitalHuman.reference = layout.avatar.src;
+  } else if (layout.mode === "video") {
+    layout.mode = layout.avatar?.src ? "image" : "none";
   }
   const ui = {
     styleId: STYLE_IDS.has(uiIn.styleId) ? uiIn.styleId : "amber",
@@ -1883,10 +1988,10 @@ function markStageReused(job, stageId, note) {
 function prepareJobReuse(job, { resume = true, forceStoryboard = false, forceAll = false } = {}) {
   if (!resume || forceAll) return;
   const status = storyboardStatus();
-  if (!forceStoryboard && !status.stale && fileOk(SLIDES_FILE, 2)) {
+  if (!forceStoryboard && !status.stale && fileOk(SLIDES_FILE, 2) && propsSlidesConsistent(path.dirname(PROPS_FILE))) {
     const copiedSlides = copyArtifact(SLIDES_FILE, path.join(job.dir, "slides.json"));
-    if (copiedSlides) {
-      copyArtifact(PROPS_FILE, path.join(job.dir, "props.json"));
+    const copiedProps = copiedSlides && copyArtifact(PROPS_FILE, path.join(job.dir, "props.json"));
+    if (copiedSlides && copiedProps) {
       markStageReused(job, 1, "复用上次分镜");
     }
   }
@@ -2406,6 +2511,12 @@ function setupDetect() {
   }
   return {
     paths,
+    recommendedProvider: recommendedProvider(),
+    providers: [...PROVIDER_IDS].map((key) => ({
+      key,
+      ok: providerReady(key, local),
+      reason: providerReady(key, local) ? "" : providerReason(key, local),
+    })),
     workbuddy: workbuddyPublic(),
     setup: setupState(),
     env: envStatus(ttsMerged()),
@@ -2425,6 +2536,18 @@ function saveSetup(body = {}) {
     paths,
   };
   const ttsIn = body.tts && typeof body.tts === "object" ? body.tts : null;
+  if (ttsIn && PROVIDER_IDS.has(ttsIn.provider)) {
+    const local = privatePaths();
+    if (!providerReady(ttsIn.provider, local)) {
+      throw new Error(`配音方案 ${ttsIn.provider} 当前不可用：${providerReason(ttsIn.provider, local)}。请改选 ${recommendedProvider()}。`);
+    }
+    if (ttsIn.provider !== "edge") {
+      const cfg = ttsIn[ttsIn.provider] || {};
+      const value = cfg.refWav || cfg.promptWav;
+      const file = value ? (path.isAbsolute(value) ? value : path.resolve(PIPELINE_ROOT, value)) : "";
+      if (!file || !fileOk(file, 1024)) throw new Error(`${ttsIn.provider} 需要样本声音，请先上传或选择你自己的录音。`);
+    }
+  }
   if (ttsIn) {
     patch.tts = {};
     if (PROVIDER_IDS.has(ttsIn.provider)) patch.tts.provider = ttsIn.provider;
@@ -2483,6 +2606,7 @@ function bootstrap() {
   const latest = currentJob ? publicJob(currentJob) : (runs[0] ? readJson(path.join(RUNS_DIR, runs[0].id, "job.json"), null) : null);
   return {
     pipelineRoot: PIPELINE_ROOT,
+    scriptFile: path.relative(PIPELINE_ROOT, SCRIPT_FILE).replaceAll("\\", "/"),
     setup: setupState(),
     workbuddy: workbuddyPublic(),
     env: envStatus(tts),
@@ -2636,8 +2760,11 @@ const server = http.createServer(async (req, res) => {
 
     if (pathname === "/api/setup" && req.method === "POST") {
       const body = await readBody(req);
-      const result = saveSetup(body);
-      sendJson(res, 200, result);
+      try {
+        sendJson(res, 200, saveSetup(body));
+      } catch (err) {
+        sendJson(res, 400, { error: err?.message || String(err) });
+      }
       return;
     }
 

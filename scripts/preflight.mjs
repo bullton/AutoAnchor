@@ -150,6 +150,9 @@ function detect() {
     freeDisk: freeDisk(ROOT),
     gpu: gpuInfo(),
   };
+  const ffmpegBin = local.ffmpeg && fs.existsSync(local.ffmpeg) ? local.ffmpeg : which("ffmpeg");
+  const filterList = ffmpegBin ? (run(ffmpegBin, ["-hide_banner", "-filters"], { timeout: 8000 }).stdout || "") : "";
+  const hasSubtitles = Boolean(ffmpegBin) && /\bsubtitles\b/.test(filterList) && /\bass\b/.test(filterList);
   const components = {
     remotion: {
       kind: "local-required",
@@ -158,6 +161,15 @@ function detect() {
       detail: fs.existsSync(REMOTION.nodeModules) ? "依赖已安装" : "缺 remotion/node_modules",
       fix: "npm --prefix remotion install",
       note: "不上传、不联网；首次渲染会下载 Chromium（约 150–300 MB，缓存在本机）",
+    },
+    ffmpeg: {
+      kind: "local-required",
+      label: "FFmpeg 字幕能力",
+      ok: hasSubtitles,
+      bin: ffmpegBin || "ffmpeg",
+      detail: hasSubtitles ? `${path.basename(ffmpegBin || "ffmpeg")} · subtitles/ass 可用` : "缺少 subtitles 或 ass 滤镜",
+      fix: "用 ffmpeg-static 的 6.0 静态版（vendor/ffmpeg），或安装带 libass 的 ffmpeg",
+      note: "系统版 ffmpeg 可能没有 libass，烧字幕会失败；探测与合成应尽量使用同一个二进制",
     },
     kaggle: {
       kind: "external",
@@ -222,6 +234,9 @@ function printReport({ hw, components }) {
   const r = components.remotion;
   console.log(`${r.ok ? "✓" : "✗"} ${r.label}：${r.detail}`);
   if (!r.ok) console.log(`   修复：${r.fix}`);
+  const f = components.ffmpeg;
+  console.log(`${f.ok ? "✓" : "✗"} ${f.label}：${f.detail}（${f.bin}）`);
+  if (!f.ok) console.log(`   修复：${f.fix}`);
   console.log("");
   console.log("── 外部服务（要引导配置） ──");
   const k = components.kaggle;
@@ -307,6 +322,7 @@ if (JSON_OUT) {
           gpu: state.hw.gpu,
         },
         remotion: state.components.remotion,
+        ffmpeg: state.components.ffmpeg,
         kaggle: state.components.kaggle,
         edge: state.components.edge,
         models: MODELS.map((m) => ({

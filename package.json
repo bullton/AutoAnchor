@@ -6,6 +6,7 @@
   "description": "口播工坊：文案、素材、数字人参考与本地配音一体化的竖屏视频流水线",
   "scripts": {
     "start": "node server.mjs",
+    "bootstrap": "node scripts/bootstrap.mjs",
     "setup": "node setup.mjs",
     "doctor": "node doctor.mjs",
     "setup:kaggle": "node scripts/install-kaggle-cli.mjs",

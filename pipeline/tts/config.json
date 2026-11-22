@@ -20,7 +20,8 @@
     "maxTextTokens": 120,
     "durationFactor": 1,
     "timeoutSec": 7200,
-    "pollIntervalSec": 20
+    "pollIntervalSec": 20,
+    "fallbackToEdge": false
   },
   "cosyvoice": {
     "mode": "cross_lingual",

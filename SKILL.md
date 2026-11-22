@@ -31,10 +31,12 @@ SKILL.md          本文件
 1. 安装依赖（只需要一次）：
    ```powershell
    npm --prefix remotion install
+   python -m pip install -r requirements.txt
    ```
 2. 首次配置，任选一种：
+   - 一条命令走完预检、配置和体检：`npm run bootstrap`；
    - 运行 `npm start`，浏览器打开 `http://127.0.0.1:4310`，未配置时会自动进入首次配置页；
-   - 或在终端运行 `npm run setup`，按提示填写 Python、FFmpeg、模型目录、自己的样本声音、Kaggle 数字人和 AI 接口。
+   - 或在终端运行 `npm run setup`，只填探测不到的路径；已探测到的 Python、FFmpeg、Chrome、模型目录会直接采用，并自动校验所选配音方案与样本声音是否可用。
    - 样本声音必须是用户自己的录音（建议 3-10 秒、干净人声），保存在 `assets/voice-ref/`，不会进入仓库；没有样本时不能使用克隆类配音方案。
 3. 体检：
    ```powershell

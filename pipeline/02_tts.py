@@ -1403,10 +1403,17 @@ def main():
     elif provider == "indextts":
         synth_indextts(tts_texts, raw_paths, cfg.get("indextts", {}), out_dir)
     elif provider == "kaggle":
-        synth_kaggle(
-            tts_texts, raw_paths, cfg.get("kaggle", {}), out_dir,
-            [s["id"] for s in slides],
-        )
+        kaggle_cfg = cfg.get("kaggle", {})
+        try:
+            synth_kaggle(
+                tts_texts, raw_paths, kaggle_cfg, out_dir,
+                [s["id"] for s in slides],
+            )
+        except Exception as exc:
+            if not kaggle_cfg.get("fallbackToEdge"):
+                raise
+            print(f"Kaggle 合成失败，按 fallbackToEdge 降级到 edge：{exc}", flush=True)
+            synth_edge(tts_texts, raw_paths, cfg.get("edge", {}))
     elif provider == "edge":
         synth_edge(tts_texts, raw_paths, cfg.get("edge", {}))
     else:

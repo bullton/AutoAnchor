@@ -38,7 +38,7 @@ function renderChecks(checks) {
     .join("");
 }
 
-function applySetup(data) {
+function applySetup(data, recommended) {
   state.setup = data;
   $("#setupState").textContent = data.completed ? "已完成配置 · 可随时回来修改" : "首次配置 · 只保存在本机";
   if (data.checks) renderChecks(data.checks);
@@ -73,6 +73,7 @@ function applySetup(data) {
   fill("#aiModel", ai.model || "gpt-4o-mini");
   fill("#aiKeyEnv", ai.keyEnv || "OPENAI_API_KEY");
   if (ai.hasApiKey) $("#aiKeyHint").textContent = "已保存密钥；留空不会覆盖。";
+  if (!data.completed && recommended) fill("#ttsProvider", recommended);
 }
 
 function renderWorkbuddy(data) {
@@ -226,10 +227,16 @@ async function save({ pathsOnly = false } = {}) {
   try {
     const body = collect();
     if (pathsOnly) {
+      delete body.tts;
       body.ai = { ...body.ai, enabled: false };
     }
-    if (!pathsOnly && body.tts.provider !== "edge" && !body.tts.voicestudio.refWav) {
-      throw new Error("请先上传或选择你自己的样本声音");
+    if (!pathsOnly) {
+      const provider = body.tts.provider;
+      const cfg = body.tts[provider] || {};
+      const voice = cfg.refWav || cfg.promptWav;
+      if (provider !== "edge" && !voice) {
+        throw new Error(`${provider} 需要样本声音，请先上传或选择你自己的录音`);
+      }
     }
     const result = await api("/api/setup", { method: "POST", body: JSON.stringify(body) });
     applySetup(result.setup);
@@ -272,6 +279,7 @@ async function detect() {
         .map((item) => `<div class="check-row ${item.ok ? "ok" : ""}"><span>${esc(item.label)}</span><b>${esc(item.text)}</b></div>`)
         .join("");
     }
+    if (data.recommendedProvider && !state.setup?.completed) fill("#ttsProvider", data.recommendedProvider);
     renderWorkbuddy(data.workbuddy);
     toast("检测完成，已填入可用路径", "ok");
   } catch (err) {
@@ -285,7 +293,7 @@ async function detect() {
 async function init() {
   try {
     const data = await api("/api/setup/detect", { method: "POST" });
-    applySetup(data.setup);
+    applySetup(data.setup, data.recommendedProvider);
     renderWorkbuddy(data.workbuddy);
     if (data.env) {
       $("#runtimeChecks").innerHTML = data.env

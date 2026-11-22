@@ -8,8 +8,29 @@ import { readMotion, resolveMotionForScene } from "./motion.mjs";
 
 const slidesPayload = JSON.parse(fs.readFileSync(files.slides, "utf8"));
 const timeline = JSON.parse(fs.readFileSync(files.timeline, "utf8"));
-const scriptRaw = fs.readFileSync(files.script, "utf8");
-const scriptHash = crypto.createHash("sha1").update(scriptRaw.replace(/\s+/g, "")).digest("hex").slice(0, 16);
+
+const normalizeText = (text) => String(text || "").replace(/^\uFEFF/, "").replace(/\s+/g, "");
+const hashText = (text) => crypto.createHash("sha1").update(normalizeText(text)).digest("hex").slice(0, 16);
+
+const jobScript = process.env.OD_OUTPUT_DIR ? path.join(paths.output, "script.txt") : "";
+const scriptFile = jobScript && fs.existsSync(jobScript) ? jobScript : files.script;
+const currentHash = fs.existsSync(scriptFile) ? hashText(fs.readFileSync(scriptFile, "utf8")) : "";
+const slidesHash = String(slidesPayload?.meta?.scriptHash || "");
+const slidesCorpusHash = hashText(
+  (Array.isArray(slidesPayload.slides) ? slidesPayload.slides : []).map((slide) => slide.speech || "").join(""),
+);
+const scriptHash = slidesHash || slidesCorpusHash || currentHash;
+
+if (!scriptHash) {
+  console.error("[03] 无法确定分镜对应的文案哈希，请先重新生成分镜。");
+  process.exit(1);
+}
+if (slidesHash && currentHash && slidesHash !== currentHash) {
+  console.error(
+    `[03] 分镜与文案不一致：slides.json=${slidesHash}，当前文案=${currentHash}。请先重新生成分镜，拒绝写入旧分镜。`,
+  );
+  process.exit(1);
+}
 
 const byId = new Map(timeline.items.map((item) => [item.id, item]));
 

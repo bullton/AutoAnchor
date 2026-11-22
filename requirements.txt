@@ -1,0 +1,5 @@
+# 口播工坊 · 最小 Python 依赖
+# 安装：python -m pip install -r requirements.txt
+edge-tts>=6.1.0
+numpy>=1.24
+soundfile>=0.12

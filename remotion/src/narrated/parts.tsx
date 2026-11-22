@@ -203,9 +203,9 @@ export const PhotoLayer: React.FC<{
 
   const overlay =
     variant === "hero"
-      ? `linear-gradient(168deg, ${palette.bg}CC 0%, ${palette.bg}44 46%, ${palette.bg}E8 100%)`
+      ? `linear-gradient(168deg, ${palette.bg}B8 0%, ${palette.bg}33 46%, ${palette.bg}D9 100%)`
       : variant === "band"
-        ? `linear-gradient(180deg, ${palette.bg}00 0%, ${palette.bg}00 18%, ${palette.bg}42 34%, ${palette.bg}94 50%, ${palette.bg}C9 64%, ${palette.bg}E8 78%, ${palette.bg} 92%)`
+        ? `linear-gradient(180deg, ${palette.bg}00 0%, ${palette.bg}00 18%, ${palette.bg}38 34%, ${palette.bg}80 50%, ${palette.bg}B8 64%, ${palette.bg}D9 78%, ${palette.bg}E8 92%)`
         : `linear-gradient(180deg, ${palette.bg}22 0%, ${palette.bg}2E 55%, ${palette.bg}E6 100%)`;
 
   return (
@@ -226,7 +226,7 @@ export const PhotoLayer: React.FC<{
             backgroundSize: "cover",
             backgroundPosition: photoPosition,
             transform: photoTransform,
-            filter: "brightness(1.06) saturate(1.04)",
+            filter: "brightness(1.12) saturate(1.04)",
           }}
         />
       ) : (
@@ -275,7 +275,7 @@ export const PhotoLayer: React.FC<{
       )}
       <div style={{ position: "absolute", inset: 0, background: overlay }} />
       {dim > 0 ? (
-        <div style={{ position: "absolute", inset: 0, background: palette.bg, opacity: Math.min(0.5, dim * 0.7) }} />
+        <div style={{ position: "absolute", inset: 0, background: palette.bg, opacity: Math.min(0.18, dim * 0.4) }} />
       ) : null}
       <div
         style={{
@@ -373,7 +373,7 @@ export const PlotGrid: React.FC<{ duration: number; height?: number }> = ({
         style={{
           position: "absolute",
           inset: 0,
-          background: `linear-gradient(180deg, transparent 18%, ${palette.bg}42 34%, ${palette.bg}94 50%, ${palette.bg}C9 64%, ${palette.bg}E8 78%, ${palette.bg} 92%)`,
+          background: `linear-gradient(180deg, transparent 18%, ${palette.bg}38 34%, ${palette.bg}80 50%, ${palette.bg}B8 64%, ${palette.bg}D9 78%, ${palette.bg}E8 92%)`,
         }}
       />
     </div>
