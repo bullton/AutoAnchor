@@ -73,7 +73,10 @@ outArgs.push(
 );
 
 console.log("合成音轨并烧录字幕...");
-const child = spawn("ffmpeg", outArgs, { cwd: paths.root, stdio: "inherit" });
+// 与 preflight 的探测保持一致：配置里指定了 ffmpeg 就用它。
+// 系统自带/Homebrew 的精简版常常没有 libass，subtitles 滤镜缺失会直接烧字幕失败。
+const ffmpegBin = paths.ffmpeg || "ffmpeg";
+const child = spawn(ffmpegBin, outArgs, { cwd: paths.root, stdio: "inherit" });
 
 child.on("exit", (code) => {
   if (code !== 0) {
