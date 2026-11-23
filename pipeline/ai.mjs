@@ -71,8 +71,8 @@ const SYSTEM = `你是竖屏口播短视频的分镜导演。把整篇文案切�
 5) bullets 是该幕 2-3 个短要点，每条 6-22 个汉字，不要以"这/那/不管/如果"开头。
 6) barTitle 是 2-5 个汉字的小标签（如 开场/政策沿革/跨境税务）。
 7) photoKey 用小写英文连字符，同主题复用同一 key（如 hong-kong-skyline、probate-documents、hk-banknotes）。
-8) photoQuery 是英文图库检索词，8 个词以内，写具体主体+场景，避免抽象词与品牌名。
-9) wikiTitle 是最贴近该幕主题的英文维基百科条目名（如 Shenzhen、Press conference、Handshake、Smartphone），拿不准就留空字符串。
+8) photoQuery 是英文图库检索词，8 个词以内，写具体主体+场景；如果这一幕有明确指名的人物/公司/产品/事件，必须直接用其真实姓名或名称（如 Jensen Huang speaking on stage、Nvidia headquarters），不要泛化成 Chinese businessman 之类；只有泛指人群时才以 Chinese 开头并优先中国人/华人。
+9) wikiTitle 是最贴近该幕主题的英文维基百科条目名；有指名人物时用其本人条目（如 Jensen Huang、Sundar Pichai），有指名公司/产品时用其官方条目（如 Nvidia、GeForce），泛指主题时才用概念条目（如 Press conference、Handshake、Smartphone），拿不准就留空字符串。
 10) 版式节奏要有变化，相邻两幕避免同一 layout（hero/closing 除外）。
 只输出 JSON，不要解释。`;
 
@@ -145,20 +145,19 @@ export function validatePlan(data, sentenceCount) {
   return normalized;
 }
 
-export async function planScenes(sentences, opts = {}) {
-  const cfg = loadAiConfig();
-  if (!cfg.enabled) return { ok: false, reason: "disabled" };
-  const key = resolveApiKey(cfg);
-  if (!key) return { ok: false, reason: `missing-key(${cfg.keyEnv})` };
-
+async function requestPlan(cfg, key, sentences, opts, attempt) {
+  const retryNote = attempt > 1 ? "上一次输出结构不合格，请严格按字段与句子顺序输出合法 JSON。" : "";
   const body = {
     model: cfg.model,
-    temperature: cfg.temperature,
+    temperature: Math.min(1.2, (cfg.temperature || 0.4) + (attempt - 1) * 0.2),
     max_tokens: cfg.maxTokens,
     response_format: { type: "json_object" },
     messages: [
       { role: "system", content: SYSTEM },
-      { role: "user", content: userPrompt(sentences, [cfg.extraPrompt, opts.extra].filter(Boolean).join("；")) },
+      {
+        role: "user",
+        content: userPrompt(sentences, [cfg.extraPrompt, opts.extra, retryNote].filter(Boolean).join("；")),
+      },
     ],
   };
 
@@ -201,4 +200,23 @@ export async function planScenes(sentences, opts = {}) {
   const scenes = validatePlan(data, sentences.length);
   if (!scenes) return { ok: false, reason: "invalid-structure", elapsedMs, usage };
   return { ok: true, scenes, model: cfg.model, elapsedMs, usage };
+}
+
+export async function planScenes(sentences, opts = {}) {
+  const cfg = loadAiConfig();
+  if (!cfg.enabled) return { ok: false, reason: "disabled" };
+  const key = resolveApiKey(cfg);
+  if (!key) return { ok: false, reason: `missing-key(${cfg.keyEnv})` };
+
+  const attempts = Math.max(1, Math.min(3, Number(opts.attempts) || 2));
+  let last = null;
+  let totalMs = 0;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    const result = await requestPlan(cfg, key, sentences, opts, attempt);
+    totalMs += result.elapsedMs || 0;
+    if (result.ok) return { ...result, elapsedMs: totalMs, attempts: attempt };
+    last = result;
+    if (/^missing-key/.test(result.reason || "")) break;
+  }
+  return { ...(last || { ok: false, reason: "unknown" }), elapsedMs: totalMs, attempts };
 }

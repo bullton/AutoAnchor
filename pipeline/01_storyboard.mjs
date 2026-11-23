@@ -104,7 +104,7 @@ function buildSlide(sentence, i, total) {
     return {
       ...base,
       type: "title",
-      kicker: "口播视频",
+      kicker: "",
       title: shortLead ? clauses[0] : display,
       caption: shortLead ? clauses.slice(1).join(" · ") : "",
     };
@@ -454,14 +454,19 @@ function cleanSeriesText(input) {
     .trim();
 }
 
-function fitSeriesTitle(input, max = 12) {
-  const chars = Array.from(cleanSeriesText(input));
+function fitSeriesTitle(input, max = 18) {
+  const clean = cleanSeriesText(input);
+  const chars = Array.from(clean);
   if (!chars.length) return "";
-  return chars
-    .slice(0, max)
-    .join("")
-    .replace(/[的了吗呢吧啊和与及或在把被让给为是]+$/u, "")
-    .trim();
+  if (chars.length <= max) return clean;
+  const trimTail = (value) =>
+    value.replace(/[的了吗呢吧啊和与及或在把被让给为是]+$/u, "").trim();
+  const clauseAt = clean.search(/[，,、；;：:。！？!?]/u);
+  if (clauseAt > 2) {
+    const clause = trimTail(Array.from(clean.slice(0, clauseAt)).slice(0, max).join(""));
+    if (Array.from(clause).length >= 4) return clause;
+  }
+  return trimTail(chars.slice(0, max).join(""));
 }
 
 function keywordSeriesTitle(corpus) {
@@ -489,7 +494,7 @@ function deriveSeries(text, sentenceList, slideList = []) {
   const headline = cleanSeriesText(slideList[0]?.title) || clauses[0] || cleanSeriesText(firstSentence);
   const headlineLength = Array.from(headline).length;
 
-  let title = headlineLength >= 4 && headlineLength <= 12 ? headline : "";
+  let title = headlineLength >= 4 && headlineLength <= 18 ? headline : "";
   if (!title) {
     const hint = keywordSeriesTitle(corpus);
     if (hint) title = city && !hint.includes(city) ? `${city}${hint}` : hint;
@@ -497,16 +502,17 @@ function deriveSeries(text, sentenceList, slideList = []) {
   if (!title && city && food) title = `${city}美食攻略`;
   if (!title) title = fitSeriesTitle(headline);
   if (Array.from(title).length < 4) {
-    if (city) title = `${city}生活指南`;
-    else if (food) title = "美食探店清单";
-    else title = "生活实用指南";
+    title = fitSeriesTitle(headline, 18) || fitSeriesTitle(sentenceList[0] || text, 18) || title;
   }
 
   const taglineCandidates = [
     ...clauses.slice(1),
     ...splitClauses(sentenceList[1] || "").map(cleanSeriesText),
   ].filter((item) => item.length >= 6 && item !== title);
-  const tagline = fitSeriesTitle(taglineCandidates[0] || "", 22) || "一条视频讲清楚";
+  const tagline =
+    fitSeriesTitle(taglineCandidates[0] || "", 22) ||
+    fitSeriesTitle(sentenceList[0] || text, 22) ||
+    fitSeriesTitle(cleanSeriesText(text), 22);
   return { title, tagline };
 }
 
@@ -535,6 +541,26 @@ for (let i = 0; i < scenes.length; i += 1) {
   scene.wikiTitle = wikiTitle;
 }
 
+for (let i = 0; i < scenes.length; i += 1) {
+  const scene = scenes[i];
+  if (scene.photoKey && scene.photoKey !== "topic") continue;
+  let donor = null;
+  for (let d = 1; d < scenes.length && !donor; d += 1) {
+    for (const j of [i - d, i + d]) {
+      const cand = scenes[j];
+      if (cand && cand.photoKey && cand.photoKey !== "topic") {
+        donor = cand;
+        break;
+      }
+    }
+  }
+  if (donor) {
+    scene.photoKey = donor.photoKey;
+    scene.photoQuery = donor.photoQuery || "";
+    scene.wikiTitle = donor.wikiTitle || "";
+  }
+}
+
 for (const scene of scenes) {
   scene.photoSource = "network";
   scene.networkPhotoKey = scene.photoKey || "topic";
@@ -543,10 +569,12 @@ for (const scene of scenes) {
 }
 
 let photoOverrides = {};
+let overridesMaterialsHash = "";
 try {
   const saved = JSON.parse(fs.readFileSync(photoOverrideFile, "utf8").replace(/^\uFEFF/, ""));
   if (saved?.scriptHash === scriptHash && saved.scenes && typeof saved.scenes === "object") {
     photoOverrides = saved.scenes;
+    overridesMaterialsHash = String(saved.materialsHash || "");
   }
 } catch {
   photoOverrides = {};
@@ -560,7 +588,13 @@ try {
   materialsHash = crypto.createHash("sha1").update(rawManifest).digest("hex").slice(0, 16);
   const parsed = JSON.parse(rawManifest.replace(/^\uFEFF/, ""));
   materialItems = Array.isArray(parsed?.items)
-    ? parsed.items.filter((item) => item && item.key && item.chapter)
+    ? parsed.items
+        .filter((item) => item && item.key)
+        .map((item) => ({
+          ...item,
+          id: String(item.id || item.key),
+          chapter: String(item.chapter || "未分章").trim() || "未分章",
+        }))
     : [];
 } catch {
   materialItems = [];
@@ -568,9 +602,8 @@ try {
 
 const materialPools = new Map();
 for (const item of materialItems) {
-  const chapter = String(item.chapter || "未分章").trim() || "未分章";
-  if (!materialPools.has(chapter)) materialPools.set(chapter, []);
-  materialPools.get(chapter).push(item);
+  if (!materialPools.has(item.chapter)) materialPools.set(item.chapter, []);
+  materialPools.get(item.chapter).push(item);
 }
 
 const materialChapterNames = [...materialPools.keys()]
@@ -591,42 +624,64 @@ function matchMaterialChapter(scene) {
   return "";
 }
 
-const materialUsage = new Map();
-function takeMaterial(chapter) {
-  const pool = materialPools.get(chapter);
-  if (!pool?.length) return null;
-  const used = materialUsage.get(chapter) || 0;
-  materialUsage.set(chapter, used + 1);
-  return pool[used % pool.length];
-}
-
-let customSceneCount = 0;
-for (const scene of scenes) {
-  const chapter = matchMaterialChapter(scene);
-  const fallback = chapter ? "" : "未分章";
-  const item = takeMaterial(chapter || fallback);
-  if (!item) continue;
-  scene.chapter = chapter || "未分章";
+const placedMaterialIds = new Set();
+function assignMaterial(scene, item) {
+  scene.chapter = item.chapter;
   scene.photoKey = item.key;
   scene.photoQuery = "";
   scene.wikiTitle = "";
   scene.materialName = item.name || "";
   scene.photoSource = "material";
-  customSceneCount += 1;
+  placedMaterialIds.add(item.id);
 }
-if (customSceneCount) {
-  console.log(`[01] 自定义素材：${materialItems.length} 张 / ${materialPools.size} 章，已匹配 ${customSceneCount} 幕`);
+
+function firstUnplacedMaterial(chapter) {
+  const pool = materialPools.get(chapter);
+  if (!pool?.length) return null;
+  return pool.find((item) => !placedMaterialIds.has(item.id)) || null;
+}
+
+for (const scene of scenes) {
+  const chapter = matchMaterialChapter(scene);
+  if (!chapter) continue;
+  const item = firstUnplacedMaterial(chapter);
+  if (item) assignMaterial(scene, item);
+}
+const chapterMatchedCount = scenes.filter((scene) => scene.materialName).length;
+
+const leftoverMaterials = materialItems.filter((item) => !placedMaterialIds.has(item.id));
+const unfilledScenes = scenes.filter((scene) => !scene.materialName);
+for (const scene of unfilledScenes) {
+  if (!leftoverMaterials.length) break;
+  assignMaterial(scene, leftoverMaterials.shift());
+}
+
+const customSceneCount = scenes.filter((scene) => scene.materialName).length;
+if (materialItems.length) {
+  console.log(
+    `[01] 自定义素材：${materialItems.length} 张 / ${scenes.length} 幕，章节匹配 ${chapterMatchedCount} 张，顺序补充 ${customSceneCount - chapterMatchedCount} 张，共放置 ${customSceneCount} 张`,
+  );
   for (const scene of scenes) {
     if (scene.materialName) console.log(`[01] ${scene.id} 使用素材「${scene.materialName}」（${scene.chapter}）`);
+  }
+  if (leftoverMaterials.length) {
+    console.log(`[01] 还有 ${leftoverMaterials.length} 张素材没有空余的幕可放`);
   }
 }
 
 for (const scene of scenes) {
   const override = photoOverrides[scene.id];
   if (override?.source === "network") {
-    scene.photoKey = scene.networkPhotoKey || "topic";
-    scene.photoQuery = scene.networkPhotoQuery || "";
-    scene.wikiTitle = scene.networkWikiTitle || "";
+    if (scene.materialName && overridesMaterialsHash !== materialsHash) continue;
+    const picked = override.network || {};
+    scene.photoKey = picked.photoKey || scene.networkPhotoKey || "topic";
+    scene.photoQuery = picked.photoQuery ?? scene.networkPhotoQuery ?? "";
+    scene.wikiTitle = picked.wikiTitle ?? scene.networkWikiTitle ?? "";
+    if (picked.photoKey) {
+      scene.networkPhotoKey = picked.photoKey;
+      scene.networkPhotoQuery = picked.photoQuery || "";
+      scene.networkWikiTitle = picked.wikiTitle || "";
+    }
     scene.chapter = "";
     scene.materialName = "";
     scene.photoSource = "network";

@@ -9,6 +9,7 @@ import {
   Chip,
   Credit,
   Headline,
+  Marker,
   PhotoLayer,
   PlotGrid,
   StatCard,
@@ -142,23 +143,7 @@ export const HeroLayout: React.FC<{ scene: SceneData }> = ({ scene }) => {
                   transform: `translateY(${(1 - appear) * 16}px)`,
                 }}
               >
-                <div
-                  style={{
-                    flex: "0 0 auto",
-                    width: 58,
-                    height: 58,
-                    borderRadius: 29,
-                    background: palette.accentSoft,
-                    color: palette.accent,
-                    fontSize: 25,
-                    fontWeight: 700,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                >
-                  {String(i + 1).padStart(2, "0")}
-                </div>
+                <Marker active={i === 0} />
                 <div
                   style={{
                     fontSize: 46,
@@ -218,16 +203,7 @@ export const BandLayout: React.FC<{ scene: SceneData }> = ({ scene }) => {
                     transform: `translateY(${(1 - appear) * 12}px)`,
                   }}
                 >
-                  <div
-                    style={{
-                      marginTop: 30,
-                      width: 34,
-                      height: 3,
-                      borderRadius: 2,
-                      background: i === 0 ? palette.accent : "rgba(255,255,255,0.28)",
-                      opacity: i === 0 ? 1 : 0.7,
-                    }}
-                  />
+                  <Marker active={i === 0} marginTop={27} width={34} />
                   <div
                     style={{
                       fontSize: 46,
@@ -252,7 +228,7 @@ export const BandLayout: React.FC<{ scene: SceneData }> = ({ scene }) => {
 export const NumberLayout: React.FC<{ scene: SceneData }> = ({ scene }) => {
   const box = useSafeBox();
   const { frame, fps, cueAt } = useSceneTiming(scene);
-  const { palette } = useStyle();
+  const { palette, look } = useStyle();
   const target = Number.parseFloat(String(scene.number || "0").replace(/[^\d.]/g, "")) || 0;
   const decimals = String(scene.number || "").includes(".") ? 1 : 0;
   const start = cueAt(0, 20);
@@ -280,31 +256,37 @@ export const NumberLayout: React.FC<{ scene: SceneData }> = ({ scene }) => {
       )}
       <TitleBar kicker={scene.kicker} title={scene.title} overlay={Boolean(scene.photo)} />
       <Body style={{ justifyContent: "center" }}>
-        <div
-          style={{
-            fontSize: 30,
-            letterSpacing: 7,
-            color: palette.inkDim,
-            marginBottom: 16,
-            opacity: fadeIn(frame, start - 8, 14),
-          }}
-        >
-          {"关键数字"}
-        </div>
+        {scene.tag || scene.barTitle ? (
+          <div
+            style={{
+              fontSize: 30,
+              letterSpacing: look.kickerTracking,
+              textTransform: look.kickerTransform,
+              color: palette.inkDim,
+              marginBottom: 16,
+              opacity: fadeIn(frame, start - 8, 14),
+            }}
+          >
+            {scene.tag || scene.barTitle}
+          </div>
+        ) : null}
         <div style={{ display: "flex", alignItems: "baseline", gap: 12, fontVariantNumeric: "tabular-nums" }}>
           <div
             style={{
+              fontFamily: look.displayFont,
               fontSize: 224,
               lineHeight: 1,
-              fontWeight: 800,
+              fontWeight: look.titleWeight,
               color: palette.accent,
-              letterSpacing: -4,
+              letterSpacing: look.titleTracking - 2,
             }}
           >
             {scene.number && /[^\d.]/.test(scene.number) ? scene.number : value}
           </div>
           {scene.unit ? (
-            <div style={{ fontSize: 70, fontWeight: 700, color: palette.ink }}>{scene.unit}</div>
+            <div style={{ fontFamily: look.displayFont, fontSize: 70, fontWeight: 700, color: palette.ink }}>
+              {scene.unit}
+            </div>
           ) : null}
         </div>
         <div
@@ -312,7 +294,7 @@ export const NumberLayout: React.FC<{ scene: SceneData }> = ({ scene }) => {
             marginTop: 18,
             width: 600,
             height: 6,
-            borderRadius: 3,
+            borderRadius: look.radius > 0 ? 3 : 0,
             background: palette.line,
             overflow: "hidden",
           }}
@@ -412,7 +394,7 @@ export const CompareLayout: React.FC<{ scene: SceneData }> = ({ scene }) => {
   const box = useSafeBox();
   const stacked = box.width < 780;
   const { frame, spread } = useSceneTiming(scene);
-  const { palette } = useStyle();
+  const { palette, look } = useStyle();
   const items = scene.bullets.slice(0, 2);
   const sides = items.length >= 2 ? items : [scene.title, scene.bullets[0] || scene.title];
   return (
@@ -439,7 +421,7 @@ export const CompareLayout: React.FC<{ scene: SceneData }> = ({ scene }) => {
                   flex: 1,
                   minWidth: 0,
                   minHeight: stacked ? 190 : 300,
-                  borderRadius: 22,
+                  borderRadius: look.radius,
                   padding: "28px 22px",
                   background: i === 0 ? palette.bgSoft : `${palette.bg}EB`,
                   boxShadow: i === 0 ? undefined : `inset 0 0 0 999px ${palette.accentSoft}`,
@@ -453,7 +435,8 @@ export const CompareLayout: React.FC<{ scene: SceneData }> = ({ scene }) => {
                 <div
                   style={{
                     fontSize: 20,
-                    letterSpacing: 4,
+                    letterSpacing: look.kickerTracking,
+                    textTransform: look.kickerTransform,
                     color: i === 0 ? palette.inkFaint : palette.accent,
                     fontWeight: 700,
                   }}
@@ -508,23 +491,7 @@ export const ListLayout: React.FC<{ scene: SceneData }> = ({ scene }) => {
                   transform: `translateY(${(1 - appear) * 14}px)`,
                 }}
               >
-                <div
-                  style={{
-                    flex: "0 0 auto",
-                    width: 58,
-                    height: 58,
-                    borderRadius: 29,
-                    background: palette.accentSoft,
-                    color: palette.accent,
-                    fontSize: 25,
-                    fontWeight: 700,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                >
-                  {String(i + 1).padStart(2, "0")}
-                </div>
+                <Marker active={i === 0} marginTop={27} />
                 <div
                   style={{
                     fontSize: 44,
@@ -601,7 +568,13 @@ export const AbstractLayout: React.FC<{ scene: SceneData }> = ({ scene }) => {
 export const ClosingLayout: React.FC<{ scene: SceneData }> = ({ scene }) => {
   const box = useSafeBox();
   const { frame, cueAt } = useSceneTiming(scene);
-  const { palette } = useStyle();
+  const { palette, look } = useStyle();
+  const ctaStyle: React.CSSProperties =
+    look.cta === "pill"
+      ? { borderRadius: 999, background: palette.accent, color: palette.bg, boxShadow: `0 10px 30px ${palette.accent}33` }
+      : look.cta === "underline"
+        ? { borderRadius: 0, background: "transparent", color: palette.accent, borderBottom: `5px solid ${palette.accent}` }
+        : { borderRadius: look.radius, background: palette.accent, color: palette.bg };
   const cta = strip(scene.lines[scene.lines.length - 1] || "");
   const credits = (scene as SceneData & { credits?: string }).credits || "";
   return (
@@ -649,18 +622,15 @@ export const ClosingLayout: React.FC<{ scene: SceneData }> = ({ scene }) => {
                 key={text}
                 style={{
                   opacity: cue(appear, 0.55),
-                  display: "flex",
-                  gap: 18,
-                  alignItems: "baseline",
                   fontSize: 40,
                   lineHeight: 1.5,
                   color: palette.ink,
                   maxWidth: 900,
+                  textAlign: "center",
                   textShadow: "0 2px 20px rgba(0,0,0,0.45)",
                 }}
               >
-                <span style={{ color: palette.accent, fontWeight: 700 }}>{`0${i + 1}`}</span>
-                <span>{text}</span>
+                {text}
               </div>
             );
           })}
@@ -669,15 +639,14 @@ export const ClosingLayout: React.FC<{ scene: SceneData }> = ({ scene }) => {
           <div
             style={{
               ...fadeSlideUp(frame, 46, 20, 20),
+              ...ctaStyle,
               marginTop: 58,
-              padding: "24px 52px",
-              borderRadius: 999,
-              background: palette.accent,
-              color: palette.bg,
-              boxShadow: `0 10px 30px ${palette.accent}33`,
+              padding: look.cta === "underline" ? "10px 6px 14px" : look.cta === "block" ? "26px 56px" : "24px 52px",
+              fontFamily: look.displayFont,
               fontSize: 36,
-              fontWeight: 700,
-              letterSpacing: 2,
+              fontWeight: look.cta === "underline" ? look.titleWeight : 700,
+              letterSpacing: look.kickerTracking,
+              textTransform: look.kickerTransform,
               textAlign: "center",
             }}
           >
@@ -801,7 +770,7 @@ export const MaterialLayout: React.FC<{ scene: SceneData }> = ({ scene }) => {
             }}
           />
           <div style={{ fontSize: 22, letterSpacing: 5, color: palette.accent, fontWeight: 600 }}>
-            {scene.kicker || scene.barTitle || "生活切片"}
+            {scene.kicker || scene.barTitle || ""}
           </div>
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 8, width: "100%" }}>
@@ -819,16 +788,7 @@ export const MaterialLayout: React.FC<{ scene: SceneData }> = ({ scene }) => {
                   transform: `translateY(${(1 - appear) * 10}px)`,
                 }}
               >
-                <div
-                  style={{
-                    marginTop: 13,
-                    width: 7,
-                    height: 7,
-                    borderRadius: 4,
-                    background: i === 0 ? palette.accent : "rgba(255,255,255,0.35)",
-                    flexShrink: 0,
-                  }}
-                />
+                <Marker active={i === 0} marginTop={17} />
                 <div
                   style={{
                     fontSize: preset === "left" ? 27 : 31,

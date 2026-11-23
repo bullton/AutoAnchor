@@ -43,7 +43,7 @@
       <div class="rail-label">流程</div>
       <nav class="nav" id="nav">
         <button class="nav-item active" data-tab="script" type="button">
-          <span class="nav-num">01</span><span>文案</span>
+          <span class="nav-num">01</span><span>创作</span>
         </button>
         <button class="nav-item" data-tab="voice" type="button">
           <span class="nav-num">02</span><span>配音</span>
@@ -80,9 +80,9 @@
       <section class="panel active" id="panel-script">
         <div class="panel-head">
           <div class="panel-title">
-            <div class="eyebrow">STEP 01 / SCRIPT</div>
-            <h1>文案</h1>
-            <p>一行一句，标点原样保留。数字和百分比会自动转成中文读法。</p>
+            <div class="eyebrow">STEP 01 / CREATIVE</div>
+            <h1>创作</h1>
+            <p>文案、配音、数字人与素材在这里一次配好。一行一句，标点原样保留，数字和百分比会自动转成中文读法。</p>
           </div>
           <div class="head-actions">
             <label class="btn ghost file-btn">
@@ -96,63 +96,74 @@
         <div class="input-overview card">
           <div class="card-head">
             <span>创作输入</span>
-            <span class="mini-tag">文案 · 素材 · 数字人 · 音色</span>
+            <span class="mini-tag">三栏：文案与配音 · 数字人 · 素材</span>
           </div>
           <div class="io-grid">
-            <label class="field io-series">
-              <span>系列名</span>
-              <input id="seriesTitle" type="text" maxlength="18" placeholder="留空则自动提炼" />
-            </label>
-            <label class="field io-series">
-              <span>副标题</span>
-              <input id="seriesTagline" type="text" maxlength="28" placeholder="一句话说明这期看点" />
-            </label>
-            <div class="field">
-              <span>配音音色</span>
-              <div class="inline">
-                <select id="inputVoiceSelect"></select>
-                <button class="btn tiny ghost" id="inputVoiceUploadBtn" type="button">上传音色</button>
+            <div class="io-col">
+              <div class="io-col-head"><span class="io-col-num">1</span><b>文案与配音</b></div>
+              <label class="field">
+                <span>系列名 <em id="seriesTitleCount">0/18</em></span>
+                <input id="seriesTitle" type="text" maxlength="18" placeholder="留空则自动从文案提炼" />
+              </label>
+              <label class="field">
+                <span>副标题 <em id="seriesTaglineCount">0/28</em></span>
+                <input id="seriesTagline" type="text" maxlength="28" placeholder="一句话说明这期看点" />
+              </label>
+              <div class="field">
+                <span>配音音色</span>
+                <div class="inline">
+                  <select id="inputVoiceSelect"></select>
+                  <button class="btn tiny ghost" id="inputVoiceUploadBtn" type="button">上传音色</button>
+                </div>
+                <span class="io-media-note">支持 wav / mp3 / m4a / flac，上传后可截取参考片段</span>
               </div>
-              <span class="io-media-note">支持 wav / mp3 / m4a / flac，上传后可截取参考片段</span>
             </div>
-            <div class="io-media io-avatar">
-              <span class="io-media-label">数字人参考 / 出镜素材</span>
-              <div class="io-media-row">
-                <div class="io-thumb" id="inputAvatarPreview"><span class="io-thumb-empty">未选择</span></div>
-                <div class="io-media-body">
-                  <select id="inputAvatarSelect"><option value="">不使用数字人</option></select>
-                  <div class="io-media-actions">
-                    <label class="btn tiny ghost file-btn">
-                      上传视频 / 头像
-                      <input type="file" id="inputAvatarUpload" accept=".png,.jpg,.jpeg,.webp,.mp4,.webm,.mov" hidden />
-                    </label>
+
+            <div class="io-col">
+              <div class="io-col-head"><span class="io-col-num">2</span><b>数字人</b></div>
+              <div class="io-media io-avatar">
+                <span class="io-media-label">数字人参考 / 出镜素材</span>
+                <div class="io-media-row">
+                  <div class="io-thumb" id="inputAvatarPreview"><span class="io-thumb-empty">未选择</span></div>
+                  <div class="io-media-body">
+                    <select id="inputAvatarSelect"><option value="">不使用数字人</option></select>
+                    <div class="io-media-actions">
+                      <label class="btn tiny ghost file-btn">
+                        上传视频 / 头像
+                        <input type="file" id="inputAvatarUpload" accept=".png,.jpg,.jpeg,.webp,.mp4,.webm,.mov" hidden />
+                      </label>
+                    </div>
+                    <span class="io-media-note" id="inputAvatarNote">可上传参考视频或头像图片</span>
                   </div>
-                  <span class="io-media-note" id="inputAvatarNote">可上传参考视频或头像图片</span>
                 </div>
               </div>
             </div>
-            <div class="io-media io-material-input">
-              <div class="io-material-head">
-                <span class="io-media-label">素材</span>
-                <b id="inputMaterialSummary">0 张 · 0 章</b>
-                <span class="io-chip" id="inputMaterialChapter">未分章</span>
-                <button class="btn tiny ghost" data-tab="style" type="button">去整理</button>
-              </div>
-              <div class="io-media-row">
-                <div class="io-thumb io-thumb-wide" id="inputMaterialPreview"><span class="io-thumb-empty">还没有素材</span></div>
-                <div class="io-media-body">
-                  <input id="inputMaterialName" type="text" maxlength="80" placeholder="只改名称，扩展名保持不变" disabled />
-                  <div class="io-media-actions">
-                    <button class="btn tiny" id="inputMaterialRename" type="button" disabled>保存名称</button>
-                    <button class="btn tiny ghost" id="inputMaterialPrev" type="button" disabled>上一张</button>
-                    <span class="io-media-pos" id="inputMaterialPos">0 / 0</span>
-                    <button class="btn tiny ghost" id="inputMaterialNext" type="button" disabled>下一张</button>
-                    <label class="btn tiny ghost file-btn">
-                      上传素材
-                      <input type="file" id="inputMaterialUpload" accept=".png,.jpg,.jpeg,.webp" multiple hidden />
-                    </label>
+
+            <div class="io-col">
+              <div class="io-col-head"><span class="io-col-num">3</span><b>素材</b></div>
+              <div class="io-media io-material-input">
+                <div class="io-material-head">
+                  <b id="inputMaterialSummary">0 张 · 0 章</b>
+                  <span class="io-chip" id="inputMaterialChapter">未分章</span>
+                  <button class="btn tiny ghost" data-tab="style" type="button">去整理</button>
+                </div>
+                <div class="io-media-row">
+                  <div class="io-thumb io-thumb-wide" id="inputMaterialPreview"><span class="io-thumb-empty">还没有素材</span></div>
+                  <div class="io-media-body">
+                    <input id="inputMaterialName" type="text" maxlength="80" placeholder="只改名称，扩展名保持不变" disabled />
+                    <div class="io-media-actions">
+                      <button class="btn tiny" id="inputMaterialRename" type="button" disabled>保存名称</button>
+                      <button class="btn tiny ghost" id="inputMaterialPrev" type="button" disabled>上一张</button>
+                      <span class="io-media-pos" id="inputMaterialPos">0 / 0</span>
+                      <button class="btn tiny ghost" id="inputMaterialNext" type="button" disabled>下一张</button>
+                      <button class="btn tiny danger" id="inputMaterialDelete" type="button" disabled>删除</button>
+                      <label class="btn tiny ghost file-btn">
+                        上传素材
+                        <input type="file" id="inputMaterialUpload" accept=".png,.jpg,.jpeg,.webp" multiple hidden />
+                      </label>
+                    </div>
+                    <span class="io-media-note">一次显示一张。重命名只改名称，保留扩展名；重新分镜时按名称/章节匹配配图。</span>
                   </div>
-                  <span class="io-media-note">一次显示一张。重命名只改名称，扩展名保持不变；重新分镜时按名称/章节匹配配图。</span>
                 </div>
               </div>
             </div>
@@ -328,8 +339,8 @@
           </div>
           <div class="material-chapters" id="materialChapters"></div>
           <div class="material-scene-head">
-            <span>分镜预览</span>
-            <span class="muted small" id="materialSceneHint">点右侧分镜切换；配图与布局调整会即时反映在预览里</span>
+            <span>分镜预览 <span class="mini-tag">兼风格预览</span></span>
+            <span class="muted small" id="materialSceneHint">点右侧分镜切换；风格、配图与布局调整都会即时反映在预览里</span>
           </div>
           <div class="material-preview" id="materialSceneMap"></div>
           <div class="scene-layout-editor hidden" id="sceneLayoutEditor"></div>
@@ -504,24 +515,6 @@
               </div>
             </div>
             <p class="muted small ai-note">兼容 OpenAI 协议的服务都能用：DeepSeek、通义、Ollama 等只需改接口地址与模型名。Key 取环境变量，未设置时回退规则版。</p>
-          </div>
-
-          <div class="card preview-card">
-            <div class="card-head"><span>风格预览</span><span class="mini-tag" id="previewStyleName">暗金纪事</span></div>
-            <div class="phone" id="stylePreview">
-              <div class="phone-top"><span></span><span></span><span></span></div>
-              <div class="phone-stage">
-                <div class="preview-kicker" id="previewKicker">CASE REVIEW</div>
-                <div class="preview-title" id="previewTitle">终端运维自动化<br />到底能省多少成本</div>
-                <div class="preview-rule"></div>
-                <div class="preview-caption">一组真实数据，拆开看。</div>
-              </div>
-              <div class="preview-avatar hidden" id="previewAvatar">
-                <span class="preview-avatar-empty" id="previewAvatarEmpty">头像 / 数字人</span>
-              </div>
-              <div class="preview-safe hidden" id="previewSafe"></div>
-              <div class="phone-progress"></div>
-            </div>
           </div>
         </div>
 

@@ -21,20 +21,13 @@ const BulletRow = ({ index, text }: { index: number; text: string }) => {
       <div
         style={{
           flex: "0 0 auto",
-          width: 56,
-          height: 56,
-          borderRadius: 28,
-          background: palette.accentSoft,
-          color: palette.accent,
-          fontSize: 24,
-          fontWeight: 700,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
+          width: 14,
+          height: 14,
+          borderRadius: 7,
+          marginTop: 26,
+          background: palette.accent,
         }}
-      >
-        {String(index + 1).padStart(2, "0")}
-      </div>
+      />
       <div
         style={{
           color: palette.ink,

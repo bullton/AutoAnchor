@@ -22,7 +22,7 @@ export const Headline: React.FC<{
   size?: number;
   maxWidth?: number;
 }> = ({ text, start = 0, align = "left", color, size, maxWidth }) => {
-  const { palette } = useStyle();
+  const { palette, look } = useStyle();
   const frame = useCurrentFrame();
   const motion = useSceneMotion();
   const I = motionIntensity(motion);
@@ -66,10 +66,12 @@ export const Headline: React.FC<{
       style={{
         ...anim,
         color: color ?? palette.ink,
+        fontFamily: look.displayFont,
         fontSize: size ?? titleSize(text),
         lineHeight: 1.34,
-        fontWeight: 700,
-        letterSpacing: 0.8,
+        fontWeight: look.titleWeight,
+        letterSpacing: look.titleTracking,
+        textTransform: look.titleTransform,
         textAlign: align,
         maxWidth,
         whiteSpace: "pre-wrap",
@@ -80,19 +82,70 @@ export const Headline: React.FC<{
   );
 };
 
+export const Marker: React.FC<{ active?: boolean; marginTop?: number; width?: number; height?: number }> = ({
+  active = false,
+  marginTop = 0,
+  width = 30,
+  height = 4,
+}) => {
+  const { palette, look } = useStyle();
+  const color = active ? palette.accent : palette.inkFaint;
+  const wrap: React.CSSProperties = { flex: "0 0 auto", marginTop };
+  if (look.marker === "square") {
+    return <div style={{ ...wrap, width: 15, height: 15, background: color }} />;
+  }
+  if (look.marker === "diamond") {
+    return <div style={{ ...wrap, width: 13, height: 13, background: color, transform: "rotate(45deg)" }} />;
+  }
+  if (look.marker === "dot") {
+    return <div style={{ ...wrap, width: 13, height: 13, borderRadius: "50%", background: color }} />;
+  }
+  if (look.marker === "bracket") {
+    return (
+      <div
+        style={{
+          ...wrap,
+          fontFamily: look.displayFont,
+          fontSize: 30,
+          lineHeight: 1,
+          fontWeight: 700,
+          color,
+        }}
+      >
+        [
+      </div>
+    );
+  }
+  return (
+    <div
+      style={{
+        ...wrap,
+        width,
+        height,
+        borderRadius: look.radius > 0 ? height / 2 : 0,
+        background: color,
+      }}
+    />
+  );
+};
+
 export const TitleBar: React.FC<{ kicker: string; title: string; overlay?: boolean }> = ({
   kicker,
   title,
   overlay = false,
 }) => {
-  const { palette } = useStyle();
+  const { palette, look } = useStyle();
   const frame = useCurrentFrame();
   const box = useSafeBox();
+  const centered = look.titleAlign === "center";
   const enter = interpolate(frame, [0, 15], [0, 1], {
     extrapolateLeft: "clamp",
     extrapolateRight: "clamp",
     easing: Easing.out(Easing.cubic),
   });
+  const titleChars = Array.from(String(title || ""));
+  const perLine = Math.max(1, Math.ceil(titleChars.length / 2));
+  const titleSize = Math.max(34, Math.min(54, Math.floor((box.width - perLine * 1.2) / (perLine * 1.03))));
   return (
     <div
       style={{
@@ -122,20 +175,22 @@ export const TitleBar: React.FC<{ kicker: string; title: string; overlay?: boole
         style={{
           position: "absolute",
           left: box.left,
-          top: 520,
-          height: TITLE_H - 520,
+          top: 500,
+          width: box.width,
+          height: 140,
           display: "flex",
           alignItems: "center",
           transform: `translateY(${(1 - enter) * -18}px)`,
-          maxWidth: box.width,
         }}
       >
         <div
           style={{
-            fontSize: 54,
+            fontFamily: look.displayFont,
+            fontSize: titleSize,
             lineHeight: 1.22,
-            letterSpacing: 1.2,
-            fontWeight: 700,
+            letterSpacing: look.titleTracking,
+            fontWeight: look.titleWeight,
+            textTransform: look.titleTransform,
             color: palette.ink,
             whiteSpace: "normal",
             overflow: "hidden",
@@ -143,6 +198,8 @@ export const TitleBar: React.FC<{ kicker: string; title: string; overlay?: boole
             WebkitLineClamp: 2,
             WebkitBoxOrient: "vertical",
             maxWidth: box.width,
+            width: "100%",
+            textAlign: centered ? "center" : "left",
             textShadow: "0 3px 22px rgba(0,0,0,0.5)",
           }}
         >
@@ -164,7 +221,7 @@ export const PhotoLayer: React.FC<{
   label?: string;
   aspect?: number | null;
 }> = ({ src, variant = "band", duration, focus = "center 38%", dim = 0.5, start = 0, ghost, label, aspect }) => {
-  const { palette } = useStyle();
+  const { palette, look } = useStyle();
   const frame = useCurrentFrame();
   const motion = useSceneMotion();
   const I = motionIntensity(motion);
@@ -246,10 +303,11 @@ export const PhotoLayer: React.FC<{
             >
               <div
                 style={{
+                  fontFamily: look.displayFont,
                   fontSize: 148,
-                  fontWeight: 800,
+                  fontWeight: look.titleWeight,
                   lineHeight: 1,
-                  letterSpacing: -4,
+                  letterSpacing: look.titleTracking - 2,
                   color: palette.ink,
                   opacity: 0.07,
                 }}
@@ -386,14 +444,14 @@ export const Card: React.FC<{
   appear?: number;
   base?: number;
 }> = ({ children, style, appear = 1, base = 0 }) => {
-  const { palette } = useStyle();
+  const { palette, look } = useStyle();
   const opacity = base === 0 ? appear : base + appear * (1 - base);
   return (
     <div
       style={{
         background: palette.bgSoft,
-        border: `1.5px solid ${palette.line}`,
-        borderRadius: 20,
+        border: `${look.rule === "none" ? 1 : 1.5}px solid ${palette.line}`,
+        borderRadius: look.radius,
         padding: "24px 28px",
         opacity,
         ...style,
@@ -409,14 +467,14 @@ export const Chip: React.FC<{
   appear: number;
   highlight?: boolean;
 }> = ({ text, appear, highlight = false }) => {
-  const { palette } = useStyle();
+  const { palette, look } = useStyle();
   return (
     <div
       style={{
         opacity: appear,
         transform: `translateY(${(1 - appear) * 14}px)`,
         padding: "15px 26px",
-        borderRadius: 999,
+        borderRadius: look.kickerShape === "pill" ? 999 : look.radius,
         border: `1.5px solid ${highlight ? palette.accent : palette.line}`,
         background: highlight ? palette.accentSoft : "transparent",
         color: highlight ? palette.accent : palette.inkDim,
@@ -438,13 +496,13 @@ export const StatCard: React.FC<{
   appear: number;
   highlight?: boolean;
 }> = ({ label, value, unit = "", appear, highlight = false }) => {
-  const { palette } = useStyle();
+  const { palette, look } = useStyle();
   return (
     <div
       style={{
         flex: 1,
         padding: "26px 22px",
-        borderRadius: 22,
+        borderRadius: look.radius,
         background: palette.bgSoft,
         border: `1.5px solid ${highlight ? `${palette.accent}66` : palette.line}`,
         textAlign: "center",
@@ -452,12 +510,13 @@ export const StatCard: React.FC<{
         transform: `translateY(${(1 - appear) * 20}px)`,
       }}
     >
-      <div style={{ fontSize: 23, color: palette.inkDim, letterSpacing: 3 }}>{label}</div>
+      <div style={{ fontSize: 23, color: palette.inkDim, letterSpacing: look.kickerTracking }}>{label}</div>
       <div
         style={{
           marginTop: 8,
+          fontFamily: look.displayFont,
           fontSize: 72,
-          fontWeight: 800,
+          fontWeight: look.titleWeight,
           color: highlight ? palette.accent : palette.ink,
           letterSpacing: -1,
           fontVariantNumeric: "tabular-nums",
@@ -479,7 +538,7 @@ export const BarRow: React.FC<{
   highlight?: boolean;
   rank?: string;
 }> = ({ label, value, ratio, appear, highlight = false, rank }) => {
-  const { palette } = useStyle();
+  const { palette, look } = useStyle();
   return (
     <div
       style={{
@@ -520,7 +579,7 @@ export const BarRow: React.FC<{
           style={{
             width: `${Math.max(0, Math.min(1, ratio)) * 100 * appear}%`,
             height: "100%",
-            borderRadius: 6,
+            borderRadius: look.radius > 0 ? 6 : 0,
             background: highlight
               ? `linear-gradient(90deg, ${palette.accent}88, ${palette.accent})`
               : palette.line,

@@ -44,11 +44,12 @@ const SCENE_LAYOUT_FILE = path.join(PIPELINE_ROOT, "pipeline", "scene-layouts.js
 const LAYOUT_TEMPLATE_FILE = path.join(PIPELINE_ROOT, "pipeline", "layout-templates.json");
 const PREVIEW_DIR = path.join(PIPELINE_ROOT, "output", "previews");
 const REMOTION_DIR = path.join(PIPELINE_ROOT, "remotion");
-const REMOTION_BIN = path.join(
+const REMOTION_CLI = path.join(
   REMOTION_DIR,
   "node_modules",
-  ".bin",
-  process.platform === "win32" ? "remotion.cmd" : "remotion",
+  "@remotion",
+  "cli",
+  "remotion-cli.js",
 );
 const PYTHON = privatePaths().python;
 const MAX_VOICE_BYTES = 40 * 1024 * 1024;
@@ -347,6 +348,9 @@ function syncSlidesPhoto(scene) {
   slideScene.chapter = scene.chapter;
   slideScene.materialName = scene.materialName;
   slideScene.photoSource = scene.photoSource;
+  slideScene.networkPhotoKey = scene.networkPhotoKey;
+  slideScene.networkPhotoQuery = scene.networkPhotoQuery;
+  slideScene.networkWikiTitle = scene.networkWikiTitle;
   writeJson(SLIDES_FILE, slides);
 }
 
@@ -361,24 +365,113 @@ async function setScenePhotoSource(sceneId, source) {
   const saved = readJson(PHOTO_OVERRIDE_FILE, null);
   const overrides = saved?.scriptHash === scriptHash && saved.scenes && typeof saved.scenes === "object" ? saved : { scriptHash, scenes: {} };
   overrides.scriptHash = scriptHash;
+  overrides.materialsHash = materialsHash();
   const existing = overrides.scenes[propScene.id] || {};
-
   if (source === "network") {
-    const previous = existing.previous || {
-      chapter: propScene.chapter || "",
-      materialName: propScene.materialName || "",
-      photoKey: propScene.photoKey || "",
-      photoQuery: propScene.photoQuery || "",
-      wikiTitle: propScene.wikiTitle || "",
-    };
+    const previous = existing.previous?.materialName
+      ? existing.previous
+      : propScene.materialName
+        ? {
+            chapter: propScene.chapter || "",
+            materialName: propScene.materialName || "",
+            photoKey: propScene.photoKey || "",
+            photoQuery: propScene.photoQuery || "",
+            wikiTitle: propScene.wikiTitle || "",
+          }
+        : null;
     await restoreSceneNetwork(propScene);
-    overrides.scenes[propScene.id] = { source: "network", previous };
+    overrides.scenes[propScene.id] = {
+      source: "network",
+      previous,
+      network: {
+        photoKey: propScene.networkPhotoKey || "",
+        photoQuery: propScene.networkPhotoQuery || "",
+        wikiTitle: propScene.networkWikiTitle || "",
+      },
+    };
   } else {
     if (!existing.previous) throw new Error("没有可恢复的素材图");
     restoreSceneMaterial(propScene, existing.previous);
     overrides.scenes[propScene.id] = { source: "material", previous: existing.previous };
   }
 
+  writeJson(PROPS_FILE, props);
+  syncSlidesPhoto(propScene);
+  writeJson(PHOTO_OVERRIDE_FILE, overrides);
+  return propScene;
+}
+
+async function sceneNetworkQuery(sceneId, fallback = "") {
+  const props = readJson(PROPS_FILE, null);
+  const scene = (props?.scenes || []).find((item) => String(item.id || "") === String(sceneId || ""));
+  if (!scene) throw new Error("找不到这一幕，请先更新分镜");
+  const query = String(
+    fallback || scene.networkPhotoQuery || scene.photoQuery || String(scene.networkPhotoKey || scene.photoKey || "").replace(/-/g, " "),
+  ).trim();
+  if (!query) throw new Error("请先填写搜索词");
+  return query;
+}
+
+async function searchSceneNetwork(sceneId, query) {
+  const clean = await sceneNetworkQuery(sceneId, query);
+  const photos = await import(pathToFileURL(path.join(PIPELINE_ROOT, "pipeline", "photos.mjs")).href);
+  const candidates = await photos.searchPhotoCandidates(clean, 12);
+  return { query: clean, candidates };
+}
+
+async function setSceneNetworkPhoto(sceneId, candidate, query) {
+  const fileTitle = String(candidate?.fileTitle || candidate?.title || "").trim();
+  if (!fileTitle) throw new Error("缺少候选图片信息，请重新搜索");
+  const props = readJson(PROPS_FILE, null);
+  const propScenes = Array.isArray(props?.scenes) ? props.scenes : [];
+  const propScene = propScenes.find((scene) => String(scene.id || "") === String(sceneId || ""));
+  if (!propScene) throw new Error("找不到这一幕，请先更新分镜");
+  const scriptHash = String(props?.meta?.scriptHash || "");
+  if (!scriptHash) throw new Error("分镜版本信息缺失，请先更新分镜");
+  const photos = await import(pathToFileURL(path.join(PIPELINE_ROOT, "pipeline", "photos.mjs")).href);
+  const key = `net-${String(propScene.id || "scene").replace(/[^a-z0-9]/gi, "").slice(0, 12)}-${crypto.randomBytes(3).toString("hex")}`;
+  const saved = await photos.savePhotoCandidate(PIPELINE_ROOT, key, { ...candidate, fileTitle });
+  if (!saved?.bytes) throw new Error("图片下载失败，换个候选试试");
+  const asset = resolvePhotoAsset(key);
+  if (!asset) throw new Error("图片保存失败，换个候选试试");
+  const savedOverrides = readJson(PHOTO_OVERRIDE_FILE, null);
+  const overrides =
+    savedOverrides?.scriptHash === scriptHash && savedOverrides.scenes && typeof savedOverrides.scenes === "object"
+      ? savedOverrides
+      : { scriptHash, scenes: {} };
+  overrides.scriptHash = scriptHash;
+  overrides.materialsHash = materialsHash();
+  const existing = overrides.scenes[propScene.id] || {};
+  const previous =
+    existing.previous?.materialName
+      ? existing.previous
+      : propScene.materialName || propScene.photoSource === "material"
+        ? {
+            chapter: propScene.chapter || "",
+            materialName: propScene.materialName || "",
+            photoKey: propScene.photoKey || "",
+            photoQuery: propScene.photoQuery || "",
+            wikiTitle: propScene.wikiTitle || "",
+          }
+        : null;
+  const domain = /^File:/i.test(fileTitle) ? fileTitle.replace(/^File:/i, "").replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ") : fileTitle;
+  const networkQuery = String(query || propScene.networkPhotoQuery || "").trim();
+  propScene.networkPhotoKey = key;
+  propScene.networkPhotoQuery = networkQuery;
+  propScene.networkWikiTitle = domain;
+  propScene.photoKey = key;
+  propScene.photoQuery = networkQuery;
+  propScene.wikiTitle = domain;
+  propScene.chapter = "";
+  propScene.materialName = "";
+  propScene.photoSource = "network";
+  propScene.photo = asset.photo;
+  propScene.photoAspect = probeImageAspect(asset.file);
+  overrides.scenes[propScene.id] = {
+    source: "network",
+    previous,
+    network: { photoKey: key, photoQuery: networkQuery, wikiTitle: domain },
+  };
   writeJson(PROPS_FILE, props);
   syncSlidesPhoto(propScene);
   writeJson(PHOTO_OVERRIDE_FILE, overrides);
@@ -536,8 +629,10 @@ function sceneList() {
       photo: scene.photo || null,
       photoSource: scene.photoSource || (scene.materialName ? "material" : "network"),
       networkPhotoKey: scene.networkPhotoKey || "",
+      networkPhotoQuery: scene.networkPhotoQuery || "",
+      networkWikiTitle: scene.networkWikiTitle || "",
       canRestoreNetwork: Boolean(scene.networkPhotoKey) && Boolean(scene.materialName || scene.photoSource === "material"),
-      canRestoreMaterial: override?.source === "network" && Boolean(override.previous?.photoKey),
+      canRestoreMaterial: override?.source === "network" && Boolean(override.previous?.materialName),
       durationInFrames: Number(scene.durationInFrames) || 0,
       layoutStyle: scene.layoutStyle || (savedLayout ? normalizeSceneLayout(savedLayout) : null),
       motion: recipe ? { id: recipe.id, name: recipe.name } : null,
@@ -738,10 +833,9 @@ function runStill(frame, outFile, propsFile) {
       `--frame=${frame}`,
       `--props=${propsFile}`,
     ];
-    const child = spawn(REMOTION_BIN, args, {
+    const child = spawn(process.execPath, [REMOTION_CLI, ...args], {
       cwd: REMOTION_DIR,
       windowsHide: true,
-      shell: process.platform === "win32",
     });
     let err = "";
     const timer = setTimeout(() => {
@@ -805,7 +899,7 @@ async function renderMotionPreviews(sceneIndex) {
   return { urls, sceneIndex: index, frames };
 }
 
-const STYLE_IDS = new Set(["amber", "tech", "paper", "mono"]);
+const STYLE_IDS = new Set(["amber", "tech", "paper", "mono", "swiss", "poster", "terminal", "glass"]);
 const MOTION_IDS = new Set(["light", "standard", "strong"]);
 const PROVIDER_IDS = new Set(["kaggle", "cosyvoice", "voicestudio", "local3", "indextts", "edge"]);
 
@@ -3232,6 +3326,30 @@ const server = http.createServer(async (req, res) => {
         if (activeJob) throw new Error("成片生成中，等结束后再调整配图");
         const scene = await setScenePhotoSource(body.sceneId, String(body.source || ""));
         sendJson(res, 200, { ok: true, sceneId: scene.id, photoSource: scene.photoSource, motion: motionState() });
+      } catch (err) {
+        sendJson(res, 400, { error: err?.message || String(err) });
+      }
+      return;
+    }
+
+    if (pathname === "/api/scene/network/search" && req.method === "POST") {
+      const body = await readBody(req);
+      try {
+        if (activeJob) throw new Error("成片生成中，等结束后再换网络图");
+        const result = await searchSceneNetwork(body.sceneId, body.query);
+        sendJson(res, 200, result);
+      } catch (err) {
+        sendJson(res, 400, { error: err?.message || String(err) });
+      }
+      return;
+    }
+
+    if (pathname === "/api/scene/network/apply" && req.method === "POST") {
+      const body = await readBody(req);
+      try {
+        if (activeJob) throw new Error("成片生成中，等结束后再换网络图");
+        const scene = await setSceneNetworkPhoto(body.sceneId, body.candidate, body.query);
+        sendJson(res, 200, { ok: true, sceneId: scene.id, photoKey: scene.photoKey, motion: motionState() });
       } catch (err) {
         sendJson(res, 400, { error: err?.message || String(err) });
       }

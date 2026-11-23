@@ -7,7 +7,10 @@
     "lang": "ZH",
     "device": "",
     "fp32": false,
-    "useQwenEmo": false
+    "useQwenEmo": false,
+    "repoPath": "",
+    "python": "",
+    "modelDir": ""
   },
   "kaggle": {
     "promptWav": "",
@@ -21,7 +24,9 @@
     "durationFactor": 1,
     "timeoutSec": 7200,
     "pollIntervalSec": 20,
-    "fallbackToEdge": false
+    "fallbackToEdge": false,
+    "python": "",
+    "kaggleBin": ""
   },
   "cosyvoice": {
     "mode": "cross_lingual",
@@ -33,7 +38,9 @@
     "refText": "",
     "speed": 1.1,
     "textFrontend": false,
-    "speakRate": 1
+    "speakRate": 1,
+    "vendorPath": "",
+    "modelPath": ""
   },
   "voicestudio": {
     "apiBase": "http://127.0.0.1:3900",
@@ -78,7 +85,8 @@
     "speakRate": 1,
     "toneTolerance": 0.09,
     "effectPreset": "broadcast",
-    "effectLevelerAmount": 0.5
+    "effectLevelerAmount": 0.5,
+    "modelDir": ""
   },
   "edge": {
     "voice": "zh-CN-XiaoxiaoNeural",

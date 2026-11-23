@@ -64,7 +64,7 @@ function readPhotoManifest() {
   }
 }
 
-const photoManifest = readPhotoManifest();
+let photoManifest = readPhotoManifest();
 const usedCredits = [];
 const missingPhotos = new Set();
 
@@ -85,6 +85,8 @@ if (fetchRequests.length) {
   } catch (err) {
     console.warn(`[03] 自动补图异常：${err?.message || err}`);
   }
+  // 补图会写入新的版权信息，这里重新读取，避免新图在片尾署名里缺失
+  photoManifest = readPhotoManifest();
 }
 
 const photoAspectCache = new Map();
@@ -202,6 +204,25 @@ const scenes = scenesPlan.map((scene, sceneIndex) => {
     cues,
   };
 });
+
+for (let i = 0; i < scenes.length; i += 1) {
+  if (scenes[i].photo) continue;
+  let donor = null;
+  for (let d = 1; d < scenes.length && !donor; d += 1) {
+    for (const j of [i - d, i + d]) {
+      if (scenes[j] && scenes[j].photo) {
+        donor = scenes[j];
+        break;
+      }
+    }
+  }
+  if (donor) {
+    scenes[i].photo = donor.photo;
+    scenes[i].photoAspect = donor.photoAspect;
+    scenes[i].photoKey = donor.photoKey;
+    console.log(`[03] ${scenes[i].id} 配图缺失，借用 ${donor.id} 的图（${donor.photoKey}）`);
+  }
+}
 
 if (scenes.length && sceneCursor !== prevFrame) {
   console.warn(`[03] 幕总帧 ${sceneCursor} 与页总帧 ${prevFrame} 不一致，以幕为准`);
@@ -329,9 +350,19 @@ function subtitlePlacement() {
 
 const subtitle = subtitlePlacement();
 
+function resolveSeriesTitle(meta, plan) {
+  const title = String(meta?.seriesTitle || "").trim();
+  const first = String((Array.isArray(plan) ? plan[0] : null)?.title || "").trim();
+  if (title && first && first.startsWith(title) && Array.from(first).length > Array.from(title).length) {
+    return Array.from(first).slice(0, 18).join("");
+  }
+  return title;
+}
+
 const props = {
   meta: {
     ...slidesPayload.meta,
+    seriesTitle: resolveSeriesTitle(slidesPayload.meta, scenesPlan),
     totalSeconds: timeline.total,
     provider: timeline.provider,
     credits: usedCredits,

@@ -8,11 +8,12 @@ if (!fs.existsSync(files.slidesTimed)) {
   process.exit(1);
 }
 
-const bin = path.join(
+const cli = path.join(
   paths.remotion,
   "node_modules",
-  ".bin",
-  process.platform === "win32" ? "remotion.cmd" : "remotion",
+  "@remotion",
+  "cli",
+  "remotion-cli.js",
 );
 
 const args = [
@@ -30,10 +31,9 @@ const args = [
 
 function renderOnce() {
   return new Promise((resolve) => {
-    const child = spawn(bin, args, {
+    const child = spawn(process.execPath, [cli, ...args], {
       cwd: paths.remotion,
       stdio: "inherit",
-      shell: process.platform === "win32",
     });
     child.on("exit", (code) => resolve(code ?? 1));
   });

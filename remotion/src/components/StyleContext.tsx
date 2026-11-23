@@ -1,5 +1,5 @@
 import { createContext, useContext } from "react";
-import { getPalette, palettes, type Palette, type StyleId } from "../theme";
+import { getLook, getPalette, looks, palettes, type Look, type Palette, type StyleId } from "../theme";
 
 export type MotionId = "light" | "standard" | "strong";
 
@@ -37,12 +37,14 @@ export const getMotion = (id?: string): MotionConfig =>
 export interface StyleConfig {
   id: StyleId;
   palette: Palette;
+  look: Look;
   motion: MotionConfig;
 }
 
 export const StyleContext = createContext<StyleConfig>({
   id: "amber",
   palette: palettes.amber,
+  look: looks.amber,
   motion: motions.standard,
 });
 
@@ -51,5 +53,6 @@ export const useStyle = () => useContext(StyleContext);
 export const resolveStyle = (style?: { id?: string; motion?: string }): StyleConfig => ({
   id: (style?.id as StyleId) in palettes ? (style?.id as StyleId) : "amber",
   palette: getPalette(style?.id),
+  look: getLook(style?.id),
   motion: getMotion(style?.motion),
 });

@@ -1,8 +1,6 @@
 export const WIDTH = 1080;
 export const HEIGHT = 1920;
 
-export const SERIES_TITLE = "生活指南";
-
 /** 顶部标题条高�?*/
 export const TITLE_H = 640;
 

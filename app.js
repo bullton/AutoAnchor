@@ -335,50 +335,92 @@ const PROVIDERS = {
   },
 };
 
+const SANS_FONT = "'Microsoft YaHei', 'PingFang SC', 'Noto Sans SC', sans-serif";
+const GROTESK_FONT = "'Helvetica Neue', Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif";
+const HEAVY_FONT = "'Arial Black', Impact, 'Microsoft YaHei', 'Noto Sans SC', sans-serif";
+const MONO_FONT = "'Cascadia Mono', Consolas, 'Courier New', 'Microsoft YaHei', monospace";
+const ROUNDED_FONT = "'Segoe UI Variable', 'Microsoft YaHei UI', 'PingFang SC', sans-serif";
+
 const STYLES = {
   amber: {
     name: "暗金纪事",
     code: "AMBER",
-    kicker: "CASE REVIEW",
-    title: "终端运维自动化<br />到底能省多少成本",
     bg: "#0E1116",
     ink: "#F5F1EA",
     dim: "rgba(245, 241, 234, 0.62)",
     accent: "#E8A33D",
-    font: "'Microsoft YaHei', 'PingFang SC', 'Noto Sans SC', sans-serif",
+    font: SANS_FONT,
+    look: { display: SANS_FONT, weight: 800, track: 1, upper: false, marker: "bar", pattern: "lines", radius: 2, align: "left" },
   },
   tech: {
     name: "深蓝仪表",
     code: "TECH",
-    kicker: "SYSTEM METRICS",
-    title: "把重复请求<br />交给自动化跑",
     bg: "#06121B",
     ink: "#E9F7FF",
     dim: "rgba(233, 247, 255, 0.64)",
     accent: "#38D6E6",
-    font: "'Microsoft YaHei', 'PingFang SC', 'Noto Sans SC', sans-serif",
+    font: SANS_FONT,
+    look: { display: GROTESK_FONT, weight: 700, track: 2, upper: false, marker: "bracket", pattern: "grid", radius: 0, align: "left" },
   },
   paper: {
     name: "纸本报告",
     code: "PAPER",
-    kicker: "FIELD NOTES",
-    title: "一份关于效率的<br />现场观察记录",
     bg: "#F2EDE3",
     ink: "#1C1916",
     dim: "rgba(28, 25, 22, 0.66)",
     accent: "#B8452F",
     font: "'Source Han Serif SC', 'Songti SC', 'STSong', 'SimSun', serif",
+    look: { display: "'Source Han Serif SC', 'Songti SC', 'STSong', 'SimSun', serif", weight: 600, track: 0.5, upper: false, marker: "dot", pattern: "none", radius: 0, align: "left" },
   },
   mono: {
     name: "黑白极简",
     code: "MONO",
-    kicker: "PLAIN TEXT",
-    title: "只留下事实<br />和一组数字",
     bg: "#050505",
     ink: "#FFFFFF",
     dim: "rgba(255, 255, 255, 0.64)",
     accent: "#FFFFFF",
-    font: "'Microsoft YaHei', 'PingFang SC', 'Noto Sans SC', sans-serif",
+    font: SANS_FONT,
+    look: { display: SANS_FONT, weight: 800, track: 0, upper: false, marker: "bar", pattern: "none", radius: 0, align: "left" },
+  },
+  swiss: {
+    name: "瑞士网格",
+    code: "SWISS",
+    bg: "#F5F5F2",
+    ink: "#101010",
+    dim: "rgba(16, 16, 16, 0.62)",
+    accent: "#E12D24",
+    font: GROTESK_FONT,
+    look: { display: GROTESK_FONT, weight: 700, track: -0.5, upper: true, marker: "square", pattern: "grid", radius: 0, align: "left" },
+  },
+  poster: {
+    name: "巨幅海报",
+    code: "POSTER",
+    bg: "#101C4A",
+    ink: "#FFF6E4",
+    dim: "rgba(255, 246, 228, 0.68)",
+    accent: "#FFC93C",
+    font: HEAVY_FONT,
+    look: { display: HEAVY_FONT, weight: 900, track: -1.5, upper: true, marker: "diamond", pattern: "none", radius: 0, align: "center" },
+  },
+  terminal: {
+    name: "终端矩阵",
+    code: "TERMINAL",
+    bg: "#03100B",
+    ink: "#D6FFE6",
+    dim: "rgba(214, 255, 230, 0.62)",
+    accent: "#35F59B",
+    font: MONO_FONT,
+    look: { display: MONO_FONT, weight: 700, track: 1, upper: true, marker: "bracket", pattern: "scan", radius: 0, align: "left" },
+  },
+  glass: {
+    name: "柔光玻璃",
+    code: "GLASS",
+    bg: "#101528",
+    ink: "#F3F6FF",
+    dim: "rgba(243, 246, 255, 0.64)",
+    accent: "#8FB3FF",
+    font: ROUNDED_FONT,
+    look: { display: ROUNDED_FONT, weight: 700, track: 0.5, upper: false, marker: "dot", pattern: "glow", radius: 28, align: "center" },
   },
 };
 
@@ -439,6 +481,7 @@ const state = {
   materialBusy: false,
   voiceUploadFromInput: false,
   prep: { state: "idle", stage: "", logs: [] },
+  lastPrepDoneAt: 0,
   runPlan: null,
   savedScript: "",
   autoPrep: (() => {
@@ -464,6 +507,7 @@ const state = {
     }
   })(),
   previewDraft: null,
+  networkPicker: null,
   env: [],
   job: null,
   render: null,
@@ -551,6 +595,94 @@ function providerLabel(id) {
 
 function styleName(id) {
   return STYLES[id]?.name || id || "—";
+}
+
+function previewTextUnits(text) {
+  let units = 0;
+  for (const ch of Array.from(String(text || ""))) {
+    const code = ch.codePointAt(0);
+    if (code >= 0x2e80) units += 1;
+    else if (/[A-Za-z0-9]/.test(ch)) units += 0.56;
+    else if (ch === " ") units += 0.32;
+    else units += 0.5;
+  }
+  return units || 1;
+}
+
+function previewFitSize(text, maxWidth, maxSize, minSize) {
+  const chars = Array.from(String(text || "")).length;
+  if (!chars) return maxSize;
+  const units = previewTextUnits(text);
+  const size = Math.floor((maxWidth - chars) / (units * 1.03));
+  return Math.max(minSize, Math.min(maxSize, size));
+}
+
+function previewSplitTitle(chars) {
+  if (chars.length <= 3) return chars.length;
+  const total = previewTextUnits(chars.join(""));
+  let best = Math.ceil(chars.length / 2);
+  let bestDiff = Infinity;
+  for (let i = 1; i < chars.length; i += 1) {
+    const diff = Math.abs(total - previewTextUnits(chars.slice(0, i).join("")) * 2);
+    if (diff <= bestDiff) {
+      bestDiff = diff;
+      best = i;
+    }
+  }
+  return best;
+}
+
+function previewTitleLines(text, usable, maxSize, minSize) {
+  const chars = Array.from(String(text || "").trim());
+  if (!chars.length) return null;
+  const splitAt = previewSplitTitle(chars);
+  const lines = [chars.slice(0, splitAt).join(""), chars.slice(splitAt).join("")].filter(Boolean);
+  const maxChars = Math.max(...lines.map((line) => Array.from(line).length));
+  const maxUnits = Math.max(...lines.map((line) => previewTextUnits(line)));
+  const size = Math.max(minSize, Math.min(maxSize, Math.floor((usable - maxChars) / (maxUnits * 1.03))));
+  return { lines, size };
+}
+
+function previewSeriesCopy() {
+  const meta = state.motion?.meta || {};
+  const story = storyboardData();
+  const scenes = state.motion?.scenes || [];
+  const first = scenes[0] || {};
+  const lines = String(state.script || "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const strip = (value) => String(value || "").replace(/[。！？!?；;，,、：:\s]+$/u, "").trim();
+  const rawTitle = strip(state.series?.title || meta.seriesTitle || story.seriesTitle);
+  const firstTitle = strip(first.title || first.barTitle);
+  let title = rawTitle;
+  if (!state.series?.title && firstTitle && rawTitle) {
+    const rawChars = Array.from(rawTitle);
+    const firstChars = Array.from(firstTitle);
+    if (firstChars.length > rawChars.length && firstChars.slice(0, rawChars.length).join("") === rawTitle) {
+      title = firstChars.slice(0, 18).join("");
+    }
+  }
+  if (!title) title = Array.from(strip(lines[0])).slice(0, 18).join("");
+  const tagline = strip(state.series?.tagline || meta.seriesTagline || story.seriesTagline) || strip(lines[1] || "");
+  const kicker = strip(
+    (first.chapter && first.chapter !== "未分章" ? first.chapter : "") || first.kicker || first.barTitle,
+  );
+  return { title, tagline, kicker, sceneTitle: strip(first.title || first.barTitle) };
+}
+
+function updateSeriesCounters() {
+  const title = $("#seriesTitleCount");
+  if (title) title.textContent = `${Array.from(String(state.series?.title || "")).length}/18`;
+  const tagline = $("#seriesTaglineCount");
+  if (tagline) tagline.textContent = `${Array.from(String(state.series?.tagline || "")).length}/28`;
+}
+
+let seriesPreviewTimer = 0;
+function scheduleSeriesPreview() {
+  updateSeriesCounters();
+  window.clearTimeout(seriesPreviewTimer);
+  seriesPreviewTimer = window.setTimeout(() => renderStyleGrid(), 220);
 }
 
 function currentUi() {
@@ -1029,6 +1161,7 @@ function renderPreviewAvatar() {
   const phone = $("#stylePreview");
   const el = $("#previewAvatar");
   const safeEl = $("#previewSafe");
+  if (!phone || !el || !safeEl) return;
   const show = layout.mode !== "none";
   el.classList.toggle("hidden", !show);
   safeEl.classList.toggle("hidden", !show || layout.avoid === false);
@@ -1179,51 +1312,41 @@ async function saveLayoutPreset() {
 
 function renderStyleGrid() {
   const ui = currentUi();
-  $("#styleGrid").innerHTML = Object.entries(STYLES)
-    .map(([id, s]) => {
-      const vars = `--s-bg:${s.bg};--s-ink:${s.ink};--s-dim:${s.dim};--s-accent:${s.accent};--s-font:${s.font}`;
-      return `<button class="style-card ${ui.styleId === id ? "active" : ""}" data-style="${id}" type="button">
-        <div class="style-thumb" style="${vars}">
-          <div class="t-bar"></div>
-          <div class="t-kicker">${esc(s.kicker)}</div>
-          <div class="t-title">${s.title}</div>
-          <div class="t-rule"></div>
-          <div class="t-caption">一组真实数据，拆开看。</div>
-        </div>
-        <div class="style-meta"><b>${esc(s.name)}</b><span>${esc(s.code)}</span></div>
-      </button>`;
-    })
+  const copy = previewSeriesCopy();
+  const titleChars = Array.from(copy.title || "在这里写标题");
+  const splitAt = titleChars.length > 4 ? Math.ceil(titleChars.length / 2) : titleChars.length;
+  const titleHtml = `${esc(titleChars.slice(0, splitAt).join(""))}<br />${esc(titleChars.slice(splitAt).join(""))}`;
+  const activeId = STYLES[ui.styleId] ? ui.styleId : Object.keys(STYLES)[0];
+
+  const picks = Object.entries(STYLES)
+    .map(
+      ([id, s]) =>
+        `<button class="style-pick ${activeId === id ? "active" : ""}" data-style="${id}" type="button"><i style="--s-accent:${s.accent}"></i><span>${esc(s.name)}</span></button>`,
+    )
     .join("");
+
+  const s = STYLES[activeId];
+  const lk = s.look || {};
+  const thumbSize = previewFitSize(copy.title || "", 360, 24, 13);
+  const vars = `--s-bg:${s.bg};--s-ink:${s.ink};--s-dim:${s.dim};--s-accent:${s.accent};--s-font:${s.font};--s-display:${lk.display || s.font};--t-size:${thumbSize}px;--t-weight:${lk.weight || 800};--t-track:${lk.track || 0}px;--t-radius:${lk.radius || 0}px`;
+  const lookClass = `look-${lk.marker || "bar"} pat-${lk.pattern || "none"} align-${lk.align || "left"}${lk.upper ? " is-upper" : ""}`;
+  const preview = `<div class="style-preview">
+      <div class="style-thumb ${lookClass}" style="${vars}">
+        <div class="t-bar"></div>
+        <div class="t-kicker">${esc(copy.kicker || s.code)}</div>
+        <div class="t-title">${titleHtml}</div>
+        <div class="t-rule"></div>
+        <div class="t-caption">${esc(copy.tagline || copy.sceneTitle || "")}</div>
+      </div>
+      <div class="style-meta"><b>${esc(s.name)}</b><span>${esc(s.code)}</span></div>
+    </div>`;
+
+  $("#styleGrid").innerHTML = `<div class="style-picks">${picks}</div><div class="style-preview-row">${preview}</div>`;
 
   $$("#motionSeg button").forEach((btn) => btn.classList.toggle("active", btn.dataset.motion === ui.motion));
   $("#motionNote").textContent = MOTION_NOTES[ui.motion] || MOTION_NOTES.standard;
-  $("#previewStyleName").textContent = styleName(ui.styleId);
-  renderPreview();
   renderLayoutPanel();
-}
-
-function renderPreview() {
-  const ui = currentUi();
-  const s = STYLES[ui.styleId] || STYLES.amber;
-  const phone = $("#stylePreview");
-  phone.style.setProperty("--p-bg", s.bg);
-  phone.style.setProperty("--p-ink", s.ink);
-  phone.style.setProperty("--p-dim", s.dim);
-  phone.style.setProperty("--p-accent", s.accent);
-  phone.style.setProperty("--p-font", s.font);
-  $("#previewKicker").textContent = s.kicker;
-  $("#previewTitle").innerHTML = s.title;
-  phone.classList.remove("playing");
-  ["m-rise", "m-wipe", "m-zoom", "m-blur", "m-slide", "m-fade", "m-accent-sweep"].forEach((name) =>
-    phone.classList.remove(name),
-  );
-  const recipe = currentMotionRecipe();
-  if (recipe) {
-    phone.classList.add(`m-${recipe.enter || "fade"}`);
-    if (recipe.accent === "sweep") phone.classList.add("m-accent-sweep");
-  }
-  void phone.offsetWidth;
-  phone.classList.add("playing");
+  renderMaterials();
 }
 
 function motionConfig() {
@@ -1492,7 +1615,7 @@ async function regenerateScene() {
       ? `AI 不可用，已为第 ${index + 1} 幕生成 ${state.motionCandidates.length} 个本地候选。`
       : `已为第 ${index + 1} 幕生成 ${state.motionCandidates.length} 个候选，点一张只替换这一幕。`;
     renderMotionLab();
-    renderPreview();
+    renderMaterials();
   } catch (err) {
     $("#motionHint").textContent = err?.message || "重排失败，可改用预设或稍后再试。";
     toast(err.message || "重排失败", "error");
@@ -1517,7 +1640,7 @@ async function applyMotion(id, scope = state.motionScope) {
         ? `已替换第 ${activeMotionScene() + 1} 幕，其他幕保持不变。`
         : "动效已应用到全部幕，生成成片时生效。";
     renderMotionLab();
-    renderPreview();
+    renderMaterials();
     toast(scope === "scene" ? "只替换了当前幕，其他幕保持不变" : "动效已应用，生成成片时生效");
   } catch (err) {
     if (err?.message) $("#motionHint").textContent = err.message;
@@ -1536,7 +1659,7 @@ async function resetMotion() {
     state.motionCandidateMode = null;
     state.motionCandidateScene = null;
     renderMotionLab();
-    renderPreview();
+    renderMaterials();
     toast("已撤销动效");
   } catch (err) {
     toast(err.message || "撤销失败", "error");
@@ -1565,7 +1688,7 @@ async function autoMotionAll() {
       ? `AI 不可用，已按「${data.theme}」用本地规则逐幕编排。`
       : `已按「${data.theme}」编排全片，可逐幕预览或锁定。`;
     renderMotionLab();
-    renderPreview();
+    renderMaterials();
     toast("全片动效已编排，生成成片时生效");
   } catch (err) {
     $("#motionHint").textContent = err?.message || "自动编排失败，可改用单幕方案或预设。";
@@ -1725,6 +1848,7 @@ function renderInputOverview() {
   const tagline = $("#seriesTagline");
   if (title && document.activeElement !== title) title.value = state.series?.title || "";
   if (tagline && document.activeElement !== tagline) tagline.value = state.series?.tagline || "";
+  updateSeriesCounters();
   const summary = $("#inputMaterialSummary");
   if (summary) {
     const items = state.materials?.items?.length || 0;
@@ -1757,6 +1881,8 @@ function renderInputOverview() {
   if (pos) pos.textContent = current ? `${current.index + 1} / ${current.total}` : "0 / 0";
   const renameBtn = $("#inputMaterialRename");
   if (renameBtn) renameBtn.disabled = !current;
+  const deleteBtn = $("#inputMaterialDelete");
+  if (deleteBtn) deleteBtn.disabled = !current;
   const prevBtn = $("#inputMaterialPrev");
   const nextBtn = $("#inputMaterialNext");
   if (prevBtn) prevBtn.disabled = !current || current.total < 2;
@@ -1893,6 +2019,12 @@ async function refreshStoryboardMeta() {
     if (data.materials) {
       state.materials = data.materials;
       renderMaterials();
+    } else {
+      const scenes = state.motion?.scenes || [];
+      if (state.previewSceneId && !scenes.some((scene) => scene.id === state.previewSceneId)) {
+        state.previewSceneId = null;
+      }
+      renderMaterials();
     }
     renderStoryboardStatus();
     renderMotionLab();
@@ -1935,8 +2067,12 @@ function applyPrepState(data) {
   state.prep = { ...(state.prep || {}), ...data };
   if (data.storyboard) state.motion = { ...state.motion, storyboard: data.storyboard };
   renderStoryboardStatus();
-  if (wasRunning && data.state === "done") {
-    toast(data.motionError ? "分镜已更新，动效需要手动重排" : "分镜与动效已更新", data.motionError ? "" : "ok");
+  const finishedAt = Number(data.finishedAt) || 0;
+  if (data.state === "done" && finishedAt && finishedAt !== state.lastPrepDoneAt) {
+    state.lastPrepDoneAt = finishedAt;
+    if (wasRunning) {
+      toast(data.motionError ? "分镜已更新，动效需要手动重排" : "分镜与动效已更新", data.motionError ? "" : "ok");
+    }
     refreshStoryboardMeta();
   }
   if (wasRunning && data.state === "error") {
@@ -1971,10 +2107,29 @@ const PREVIEW_PALETTES = {
   tech: { bg: "#06121B", bgSoft: "#0B1D29", ink: "#E9F7FF", inkDim: "rgba(233, 247, 255, 0.64)", accent: "#38D6E6" },
   paper: { bg: "#F2EDE3", bgSoft: "#E9E1D4", ink: "#1C1916", inkDim: "rgba(28, 25, 22, 0.66)", accent: "#B8452F" },
   mono: { bg: "#050505", bgSoft: "#0D0D0D", ink: "#FFFFFF", inkDim: "rgba(255, 255, 255, 0.64)", accent: "#FFFFFF" },
+  swiss: { bg: "#F5F5F2", bgSoft: "#E7E7E1", ink: "#101010", inkDim: "rgba(16, 16, 16, 0.62)", accent: "#E12D24" },
+  poster: { bg: "#101C4A", bgSoft: "#1B2C6B", ink: "#FFF6E4", inkDim: "rgba(255, 246, 228, 0.68)", accent: "#FFC93C" },
+  terminal: { bg: "#03100B", bgSoft: "#071C12", ink: "#D6FFE6", inkDim: "rgba(214, 255, 230, 0.62)", accent: "#35F59B" },
+  glass: { bg: "#101528", bgSoft: "#18203A", ink: "#F3F6FF", inkDim: "rgba(243, 246, 255, 0.64)", accent: "#8FB3FF" },
 };
 
 function previewPalette() {
   return PREVIEW_PALETTES[currentUi().styleId] || PREVIEW_PALETTES.amber;
+}
+
+function previewLook() {
+  const s = STYLES[currentUi().styleId] || STYLES.amber;
+  return s.look || STYLES.amber.look;
+}
+
+function previewMarker(look, color, top) {
+  const kind = look?.marker || "bar";
+  const base = "flex:none;background:" + color + (top ? ";margin-top:" + top + "px" : "");
+  if (kind === "square") return '<div style="' + base + ";width:15px;height:15px\"></div>";
+  if (kind === "diamond") return '<div style="' + base + ';width:13px;height:13px;transform:rotate(45deg)"></div>';
+  if (kind === "dot") return '<div style="' + base + ';width:13px;height:13px;border-radius:50%"></div>';
+  if (kind === "bracket") return '<div style="flex:none;font-size:30px;line-height:1;font-weight:700;color:' + color + (top ? ";margin-top:" + top + "px" : "") + '">[</div>';
+  return '<div style="' + base + ';width:30px;height:4px;border-radius:' + (look?.radius > 0 ? 2 : 0) + 'px"></div>';
 }
 
 function previewNum(value, min, max, fallback) {
@@ -2055,31 +2210,57 @@ function previewAvatar(layout) {
 }
 
 function previewMasthead(pal) {
-  const meta = state.motion?.meta || {};
-  const title = String(meta.seriesTitle || "生活指南").trim() || "生活指南";
-  const chars = Array.from(title);
-  const splitAt = chars.length > 4 ? Math.ceil(chars.length / 2) : chars.length;
-  const first = chars.slice(0, splitAt).join("");
-  const rest = chars.slice(splitAt).join("");
-  const tagline = String(meta.seriesTagline || "一条视频讲清楚").trim();
+  const copy = previewSeriesCopy();
+  const look = previewLook();
+  const fit = previewTitleLines(copy.title, PREVIEW_W - PREVIEW_SIDE * 2 - 36, 140, 64);
+  if (!fit) return "";
+  const { lines, size } = fit;
+  const centered = look.align === "center";
+  const barHeight = Math.round(size * 1.02 * lines.length + (lines.length > 1 ? 4 : 0));
+  const titleHtml = lines
+    .map(
+      (line, i) =>
+        '<div style="font-family:' + look.display + ";font-size:" + size + 'px;line-height:1.02;font-weight:' + look.weight +
+        ";letter-spacing:" + look.track + "px;text-transform:" + (look.upper ? "uppercase" : "none") + ";color:" +
+        (i === 0 ? pal.ink : pal.accent) + ";white-space:nowrap;text-align:" + (centered ? "center" : "left") +
+        ";text-shadow:0 4px 26px rgba(0," + (i === 0 ? "0,0,0,0.55)" : "0,0,0,0.5)") +
+        '">' + esc(line) + "</div>",
+    )
+    .join("");
+  const corner =
+    look.marker === "square"
+      ? '<div style="position:absolute;right:0;top:86px;width:14px;height:14px;background:' + pal.accent + ';opacity:0.9"></div>'
+      : look.marker === "dot"
+        ? '<div style="position:absolute;right:0;top:86px;width:14px;height:14px;border-radius:50%;background:' + pal.accent + ';opacity:0.9"></div>'
+        : look.marker === "bracket"
+          ? '<div style="position:absolute;right:0;top:74px;font-family:' + look.display + ";font-size:34px;font-weight:700;color:" + pal.accent + '">]</div>'
+          : '<div style="position:absolute;right:0;top:86px;width:' + (look.marker === "bar" ? 26 : 12) + "px;height:" + (look.marker === "bar" ? 4 : 12) + 'px;' + (look.marker === "diamond" ? "transform:rotate(45deg);" : "") + "background:" + pal.accent + ';opacity:0.9"></div>';
+  const lead = centered
+    ? '<div style="width:88px;height:' + (look.radius > 0 ? 8 : 6) + 'px;border-radius:' + (look.radius > 0 ? 999 : 0) + 'px;background:' + pal.accent + ";box-shadow:0 0 22px " + pal.accent + '44"></div>'
+    : '<div style="flex:none;width:6px;height:' + barHeight + 'px;margin-top:8px;border-radius:' + (look.radius > 0 ? 3 : 0) + 'px;background:linear-gradient(180deg,' + pal.accent + "," + pal.accent + '66 78%,transparent);box-shadow:0 0 22px ' + pal.accent + '44"></div>';
   return '<div style="position:absolute;left:' + PREVIEW_SIDE + "px;right:" + PREVIEW_SIDE + 'px;top:76px;z-index:60;pointer-events:none">' +
-    '<div style="display:flex;gap:30px">' +
-      '<div style="width:6px;height:300px;margin-top:8px;border-radius:3px;background:linear-gradient(180deg,' + pal.accent + "," + pal.accent + '66 78%,transparent);box-shadow:0 0 22px ' + pal.accent + '44"></div>' +
-      '<div style="min-width:0">' +
-        '<div style="font-size:19px;line-height:1.2;font-weight:600;letter-spacing:8px;color:' + pal.accent + '">生活指南</div>' +
-        '<div style="margin-top:20px;font-size:140px;line-height:1.02;font-weight:800;letter-spacing:1px;color:' + pal.ink + ';white-space:nowrap;text-shadow:0 4px 26px rgba(0,0,0,0.55)">' + esc(first) + '</div>' +
-        '<div style="font-size:140px;line-height:1.02;font-weight:800;letter-spacing:1px;color:' + pal.accent + ';white-space:nowrap;text-shadow:0 4px 26px rgba(0,0,0,0.5)">' + esc(rest) + '</div>' +
-      '</div>' +
+    '<div style="display:flex;' + (centered ? "flex-direction:column;align-items:center;gap:18px" : "gap:30px") + '">' +
+      lead +
+      '<div style="min-width:0;text-align:' + (centered ? "center" : "left") + '">' + titleHtml + '</div>' +
     '</div>' +
-    '<div style="position:absolute;left:0;right:0;top:362px;font-size:28px;line-height:1.2;letter-spacing:4px;font-weight:500;color:' + pal.inkDim + '">' + esc(tagline) + '</div>' +
-    '<div style="position:absolute;right:0;top:86px;width:10px;height:10px;transform:rotate(45deg);background:' + pal.accent + ';opacity:0.9"></div>' +
+    (copy.tagline
+      ? '<div style="position:absolute;left:0;right:0;top:' + (barHeight + (centered ? 54 : 24)) + 'px;font-family:' + look.display + ";font-size:28px;line-height:1.2;letter-spacing:" + (look.track + 3) + "px;text-transform:" + (look.upper ? "uppercase" : "none") + ";font-weight:500;color:" + pal.inkDim + ";text-align:" + (centered ? "center" : "left") + '">' + esc(copy.tagline) + '</div>'
+      : "") +
+    corner +
   '</div>';
 }
 
 function previewTitleBar(scene, pal) {
+  const text = String(scene?.title || "").trim();
+  if (!text) return "";
+  const look = previewLook();
+  const centered = look.align === "center";
+  const chars = Array.from(text);
+  const perLine = Math.max(1, Math.ceil(chars.length / 2));
+  const size = Math.max(34, Math.min(54, Math.floor((948 - perLine * 1.2) / (perLine * 1.03))));
   return '<div style="position:absolute;left:0;top:0;width:' + PREVIEW_W + "px;height:640px;overflow:hidden;z-index:20;background:linear-gradient(180deg," + pal.bg + "F2 0%," + pal.bg + "DE 42%," + pal.bg + "A8 68%," + pal.bg + "52 86%," + pal.bg + '00 100%)">' +
-    '<div style="position:absolute;left:' + PREVIEW_SIDE + 'px;top:520px;height:120px;display:flex;align-items:center;max-width:948px">' +
-      '<div style="font-size:54px;line-height:1.22;letter-spacing:1.2px;font-weight:700;color:' + pal.ink + ';display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;text-shadow:0 3px 22px rgba(0,0,0,0.5)">' + esc(scene?.title || "") + '</div>' +
+    '<div style="position:absolute;left:' + PREVIEW_SIDE + "px;top:500px;width:948px;display:flex;align-items:center;justify-content:" + (centered ? "center" : "flex-start") + '">' +
+      '<div style="font-family:' + look.display + ";font-size:" + size + "px;line-height:1.22;letter-spacing:" + look.track + "px;font-weight:" + look.weight + ";text-transform:" + (look.upper ? "uppercase" : "none") + ";color:" + pal.ink + ";width:100%;text-align:" + (centered ? "center" : "left") + ';display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;text-shadow:0 3px 22px rgba(0,0,0,0.5)">' + esc(text) + '</div>' +
     '</div>' +
   '</div>';
 }
@@ -2115,10 +2296,12 @@ function previewSceneHtml(scene, styleOverride) {
   const topScrim = '<div style="position:absolute;inset:0;z-index:2;background:linear-gradient(180deg,' + pal.bg + 'E6 0%,' + pal.bg + 'A8 22%,' + pal.bg + '33 38%,' + pal.bg + '00 52%)"></div>';
   const bottomScrim = '<div style="position:absolute;inset:0;z-index:3;background:linear-gradient(180deg,' + pal.bg + '00 0%,' + pal.bg + '00 38%,' + pal.bg + '33 52%,' + pal.bg + 'AA 68%,' + pal.bg + 'E6 84%,' + pal.bg + 'F2 100%)"></div>';
   const contentScrim = '<div style="position:absolute;left:' + Math.max(0, contentLeft - 28) + "px;right:" + Math.max(0, PREVIEW_W - contentLeft - contentWidth - 28) + "px;top:" + Math.max(0, contentTop - 150) + 'px;height:430px;z-index:4;background:linear-gradient(180deg,' + pal.bg + '00 0%,' + pal.bg + '8C 24%,' + pal.bg + 'B8 62%,' + pal.bg + '00 100%);opacity:0.9"></div>';
-  const kicker = '<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px"><div style="width:8px;height:8px;border-radius:4px;background:' + pal.accent + ";box-shadow:0 0 12px " + pal.accent + '66"></div><div style="font-size:22px;letter-spacing:5px;color:' + pal.accent + ';font-weight:600">' + esc(scene?.kicker || scene?.barTitle || "生活切片") + '</div></div>';
+  const look = previewLook();
+  const kickerMark = previewMarker(look, pal.accent, 0);
+  const kicker = '<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">' + kickerMark + '<div style="font-family:' + look.display + ";font-size:22px;letter-spacing:" + (look.track + 4) + "px;text-transform:" + (look.upper ? "uppercase" : "none") + ";color:" + pal.accent + ';font-weight:600">' + esc(scene?.kicker || scene?.barTitle || "") + '</div></div>';
   const bullets = (scene?.bullets || []).slice(0, 3).map((text, i) =>
     '<div style="display:flex;gap:12px;align-items:flex-start;justify-content:' + justify + ';margin-top:8px">' +
-      '<div style="margin-top:13px;width:7px;height:7px;border-radius:4px;flex:none;background:' + (i === 0 ? pal.accent : "rgba(255,255,255,0.35)") + '"></div>' +
+      previewMarker(look, i === 0 ? pal.accent : pal.inkDim, 14) +
       '<div style="font-size:' + (preset === "left" ? 27 : 31) + "px;line-height:1.5;font-weight:" + (i === 0 ? 700 : 500) + ";color:" + pal.ink + ";opacity:" + (i === 0 ? 1 : 0.86) + ';text-shadow:0 2px 18px rgba(0,0,0,0.7)">' + esc(text) + '</div>' +
     '</div>',
   ).join("");
@@ -2182,6 +2365,79 @@ function rememberPreviewScene(id) {
   try {
     localStorage.setItem("od-preview-scene", id);
   } catch {}
+}
+
+function renderNetworkPicker(picker) {
+  const candidates = Array.isArray(picker.candidates) ? picker.candidates : [];
+  const grid = picker.loading
+    ? `<div class="network-picker-hint">正在找图…</div>`
+    : picker.error
+      ? `<div class="network-picker-hint error">${esc(picker.error)}</div>`
+      : candidates.length
+        ? `<div class="network-picker-grid">${candidates
+            .map(
+              (item, index) => `<button type="button" class="network-candidate" data-network-candidate="${index}" title="${esc(item.title || "")}">
+                <img src="${esc(item.thumb || "")}" alt="" loading="lazy" referrerpolicy="no-referrer" />
+                <span>${esc(String(item.title || "").replace(/^File:/i, ""))}</span>
+              </button>`,
+            )
+            .join("")}</div>`
+        : `<div class="network-picker-hint">输入关键词后搜索，点一张图即可替换这一幕。</div>`;
+  return `<div class="network-picker">
+      <form class="network-picker-form" data-network-form="${esc(picker.sceneId)}">
+        <input type="text" data-network-query value="${esc(picker.query || "")}" placeholder="英文关键词，如 football training" />
+        <button type="submit" class="btn tiny" ${picker.loading ? "disabled" : ""}>搜索</button>
+        <button type="button" class="btn tiny ghost" data-network-close>收起</button>
+      </form>
+      ${grid}
+    </div>`;
+}
+
+function openNetworkPicker(sceneId) {
+  const scene = (state.motion?.scenes || []).find((item) => item.id === sceneId);
+  if (!scene) return;
+  state.networkPicker = {
+    sceneId,
+    query: scene.networkPhotoQuery || scene.photoQuery || String(scene.photoKey || "").replace(/-/g, " "),
+    candidates: [],
+    loading: false,
+    error: "",
+  };
+  renderMaterials();
+}
+
+async function searchSceneNetwork(sceneId, query) {
+  const clean = String(query || "").trim();
+  state.networkPicker = { sceneId, query: clean, candidates: [], loading: true, error: "" };
+  renderMaterials();
+  try {
+    const data = await api("/api/scene/network/search", {
+      method: "POST",
+      body: JSON.stringify({ sceneId, query: clean }),
+    });
+    state.networkPicker = { sceneId, query: data.query || clean, candidates: data.candidates || [], loading: false, error: "" };
+  } catch (err) {
+    state.networkPicker = { sceneId, query: clean, candidates: [], loading: false, error: err.message || "搜索失败" };
+  }
+  renderMaterials();
+}
+
+async function applySceneNetwork(sceneId, candidate) {
+  const picker = state.networkPicker;
+  try {
+    const data = await api("/api/scene/network/apply", {
+      method: "POST",
+      body: JSON.stringify({ sceneId, candidate, query: picker?.query || "" }),
+    });
+    if (data.motion) state.motion = data.motion;
+    state.networkPicker = null;
+    renderMaterials();
+    renderMotionLab();
+    toast("已更换网络配图", "ok");
+    await refreshStoryboardMeta();
+  } catch (err) {
+    toast(err.message || "换图失败", "error");
+  }
 }
 
 function renderMaterials() {
@@ -2273,6 +2529,8 @@ function renderMaterials() {
         : current.canRestoreMaterial
           ? `<button type="button" class="scene-photo-restore" data-scene-photo="${esc(current.id)}" data-photo-source="material">用回素材图</button>`
           : "";
+      const networkButton = `<button type="button" class="scene-photo-restore" data-network-pick="${esc(current.id)}">换网络素材</button>`;
+      const picker = state.networkPicker?.sceneId === current.id ? renderNetworkPicker(state.networkPicker) : "";
       const layoutButton = material
         ? `<button type="button" class="scene-layout-btn${state.layoutSceneId === current.id ? " active" : ""}" data-scene-layout="${esc(current.id)}">${state.layoutSceneId === current.id ? "收起布局" : "调整布局"}</button>`
         : "";
@@ -2297,7 +2555,8 @@ function renderMaterials() {
             <b>${esc(current.kicker || "")} ${esc(current.barTitle || current.title || "")}</b>
             <span title="${esc(sourceDetail)}">${esc(sourceDetail)}</span>
           </div>
-          <div class="mp-actions">${restore}${layoutButton}</div>
+          <div class="mp-actions">${restore}${networkButton}${layoutButton}</div>
+          ${picker}
         </div>
         <div class="mp-list" role="list">${items}</div>`;
       window.requestAnimationFrame(fitMaterialPreview);
@@ -3198,6 +3457,7 @@ function bind() {
   $("#scriptInput").addEventListener("input", (event) => {
     state.script = event.target.value;
     renderScriptStats();
+    scheduleSeriesPreview();
     markDirty();
   });
 
@@ -3227,10 +3487,12 @@ function bind() {
 
   $("#seriesTitle").addEventListener("input", (event) => {
     state.series.title = event.target.value;
+    scheduleSeriesPreview();
     markDirty();
   });
   $("#seriesTagline").addEventListener("input", (event) => {
     state.series.tagline = event.target.value;
+    scheduleSeriesPreview();
     markDirty();
   });
 
@@ -3285,6 +3547,10 @@ function bind() {
 
   $("#inputMaterialPrev").addEventListener("click", () => stepInputMaterial(-1));
   $("#inputMaterialNext").addEventListener("click", () => stepInputMaterial(1));
+  $("#inputMaterialDelete").addEventListener("click", () => {
+    const current = currentInputMaterial();
+    if (current?.item) void deleteMaterial(current.item.id);
+  });
 
   $("#inputVoiceSelect").addEventListener("change", (event) => {
     const name = event.target.value;
@@ -3416,7 +3682,7 @@ function bind() {
   });
 
   $("#styleGrid").addEventListener("click", (event) => {
-    const card = event.target.closest(".style-card");
+    const card = event.target.closest("[data-style]");
     if (!card) return;
     currentUi().styleId = card.dataset.style;
     renderStyleGrid();
@@ -3482,7 +3748,7 @@ function bind() {
     if (!btn) return;
     state.motionScope = btn.dataset.scope;
     renderMotionLab();
-    renderPreview();
+    renderMaterials();
   });
   $("#motionScene").addEventListener("change", (event) => {
     state.motionSceneIndex = Math.max(0, Number(event.target.value) || 0);
@@ -3490,7 +3756,7 @@ function bind() {
     state.motionCandidateMode = null;
     state.motionCandidateScene = null;
     renderMotionLab();
-    renderPreview();
+    renderMaterials();
   });
   $("#motionChips").addEventListener("click", (event) => {
     const btn = event.target.closest("button[data-preset]");
@@ -3629,11 +3895,30 @@ function bind() {
   });
 
   $("#materialSceneMap").addEventListener("click", (event) => {
+    const pickBtn = event.target.closest("[data-network-pick]");
+    if (pickBtn) {
+      openNetworkPicker(pickBtn.dataset.networkPick);
+      return;
+    }
+    const closePick = event.target.closest("[data-network-close]");
+    if (closePick) {
+      state.networkPicker = null;
+      renderMaterials();
+      return;
+    }
+    const candidateBtn = event.target.closest("[data-network-candidate]");
+    if (candidateBtn) {
+      const picker = state.networkPicker;
+      const candidate = picker?.candidates?.[Number(candidateBtn.dataset.networkCandidate)];
+      if (picker && candidate) void applySceneNetwork(picker.sceneId, candidate);
+      return;
+    }
     const selectBtn = event.target.closest("[data-scene-select]");
     if (selectBtn) {
       const nextId = selectBtn.dataset.sceneSelect;
       const editorOpen = Boolean(state.layoutSceneId);
       state.previewDraft = null;
+      state.networkPicker = null;
       rememberPreviewScene(nextId);
       if (editorOpen) {
         const next = (state.motion?.scenes || []).find((scene) => scene.id === nextId);
@@ -3657,6 +3942,14 @@ function bind() {
     const btn = event.target.closest("[data-scene-photo]");
     if (!btn) return;
     restoreSceneNetwork(btn.dataset.scenePhoto, btn.dataset.photoSource || "network");
+  });
+
+  $("#materialSceneMap").addEventListener("submit", (event) => {
+    const form = event.target.closest("[data-network-form]");
+    if (!form) return;
+    event.preventDefault();
+    const query = form.querySelector("[data-network-query]")?.value || "";
+    void searchSceneNetwork(form.dataset.networkForm, query);
   });
 
   const layoutEditor = $("#sceneLayoutEditor");
@@ -3761,39 +4054,7 @@ function bind() {
     }
   });
 
-  const avatarEl = $("#previewAvatar");
-  let drag = null;
-  avatarEl.addEventListener("pointerdown", (event) => {
-    if (uiLayout().mode === "none") return;
-    drag = { rect: $("#stylePreview").getBoundingClientRect(), id: event.pointerId };
-    avatarEl.setPointerCapture(event.pointerId);
-    avatarEl.classList.add("dragging");
-    event.preventDefault();
-  });
-  avatarEl.addEventListener("pointermove", (event) => {
-    if (!drag) return;
-    const a = uiLayout().avatar;
-    a.x = Math.round(clampNumber((event.clientX - drag.rect.left) / drag.rect.width, 0, 1, a.x) * 1000) / 1000;
-    a.y = Math.round(clampNumber((event.clientY - drag.rect.top) / drag.rect.height, 0, 1, a.y) * 1000) / 1000;
-    syncLayoutControls();
-    markDirty();
-  });
-  const endDrag = () => {
-    if (!drag) return;
-    drag = null;
-    avatarEl.classList.remove("dragging");
-  };
-  avatarEl.addEventListener("pointerup", endDrag);
-  avatarEl.addEventListener("pointercancel", endDrag);
-  window.addEventListener("resize", renderPreviewAvatar);
   window.addEventListener("resize", fitMaterialPreview);
-  if (window.ResizeObserver) {
-    let previewRaf = 0;
-    new ResizeObserver(() => {
-      cancelAnimationFrame(previewRaf);
-      previewRaf = requestAnimationFrame(renderPreviewAvatar);
-    }).observe($("#stylePreview"));
-  }
 
   const setAi = (patch) => {
     state.config.ai = { ...(state.config.ai || {}), ...patch };

@@ -4,6 +4,7 @@ import crypto from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { files, paths, readLayout, shapeRatio, video } from "./config.mjs";
 import { readMotion, resolveMotionForScene } from "./motion.mjs";
+import { fetchMissingPhotos } from "./photos.mjs";
 
 const slidesFile = files.slides;
 if (!fs.existsSync(slidesFile)) {
@@ -105,6 +106,35 @@ if (!rawSlides.length || !rawScenes.length) {
   process.exit(1);
 }
 
+const fetchRequests = [];
+for (const scene of rawScenes) {
+  const key = scene.photoKey;
+  if (!key || key === "topic") continue;
+  if (fetchRequests.some((item) => item.key === key)) continue;
+  const exists = photoExts.some((ext) => fs.existsSync(path.join(photoDir, `${key}${ext}`)));
+  if (!exists) fetchRequests.push({ key, query: scene.photoQuery, wikiTitle: scene.wikiTitle });
+}
+if (fetchRequests.length) {
+  console.log(`[01b] 预览补图：${fetchRequests.length} 张（${fetchRequests.map((item) => item.key).join(", ")}）`);
+  try {
+    const result = await fetchMissingPhotos(paths.root, fetchRequests, (line) =>
+      console.log(String(line).replace(/^\[03\]/, "[01b]")),
+    );
+    if (result.failed.length) console.warn(`[01b] 补图失败 ${result.failed.length} 张：${result.failed.join(", ")}`);
+  } catch (err) {
+    console.warn(`[01b] 补图异常：${err?.message || err}`);
+  }
+}
+
+function resolveSeriesTitle(meta, scenes) {
+  const title = String(meta?.seriesTitle || "").trim();
+  const first = String(scenes?.[0]?.title || "").trim();
+  if (title && first && first.startsWith(title) && Array.from(first).length > Array.from(title).length) {
+    return Array.from(first).slice(0, 18).join("");
+  }
+  return title;
+}
+
 let cursor = 0;
 const timed = rawSlides.map((slide, index) => {
   const text = String(slide.speech || slide.title || "").replace(/\s/g, "");
@@ -151,6 +181,7 @@ const scenes = rawScenes.map((scene, sceneIndex) => {
 const props = {
   meta: {
     ...(payload.meta || {}),
+    seriesTitle: resolveSeriesTitle(payload.meta, rawScenes),
     totalSeconds: Number(cursor.toFixed(3)),
     provider: "preview",
     credits: [],
