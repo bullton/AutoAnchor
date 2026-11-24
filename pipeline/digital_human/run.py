@@ -272,20 +272,75 @@ def push_kernel(k, args, ref, user):
     return meta["id"]
 
 
-def wait_kernel(k, ref, timeout_s):
+QUEUED_STATUSES = {"QUEUED", "QUEUING", "PENDING"}
+
+
+def kernel_status(k, ref):
+    r = k("kernels", "status", ref, quiet=True)
+    m = re.search(r'"([^"]+)"', r.stdout or "")
+    return (m.group(1) if m else (r.stdout or "").strip()).rsplit(".", 1)[-1]
+
+
+def wait_kernel(k, ref, timeout_s, queue_timeout_s=0):
     t0 = time.time()
     last = None
+    queued_since = None
     while time.time() - t0 < timeout_s:
-        r = k("kernels", "status", ref, quiet=True)
-        m = re.search(r'"([^"]+)"', r.stdout or "")
-        status = (m.group(1) if m else (r.stdout or "").strip()).rsplit(".", 1)[-1]
+        status = kernel_status(k, ref)
         if status != last:
             say(f"[{datetime.datetime.now():%H:%M:%S}] {status}")
             last = status
+        if status in QUEUED_STATUSES:
+            if queued_since is None:
+                queued_since = time.time()
+                say("排队中：等待 Kaggle 分配 GPU 会话")
+            else:
+                waited = int(time.time() - queued_since)
+                if queue_timeout_s > 0 and waited >= queue_timeout_s:
+                    say(f"排队 {waited // 60} 分 {waited % 60} 秒仍未分配到 GPU 会话，"
+                        f"超过上限 {queue_timeout_s // 60} 分钟")
+                    return "QUEUE_TIMEOUT"
+                say(f"排队中 {waited // 60} 分 {waited % 60} 秒")
+        else:
+            queued_since = None
         if status in ("COMPLETE", "ERROR", "CANCEL_ACKNOWLEDGED", "CANCELED", "FAILED"):
             return status
         time.sleep(20)
     return "TIMEOUT"
+
+
+def cancel_kernel_run(k, ref, wait_s=180):
+    cmd = ["kernels", "cancel", ref]
+    r = k(*cmd, quiet=True)
+    blob = ((r.stderr or "") + (r.stdout or "")).strip()
+    if r.returncode != 0:
+        lowered = blob.lower()
+        unsupported = any(
+            token in lowered
+            for token in ("no such command", "unrecognized", "unknown command", "invalid choice")
+        )
+        if not unsupported:
+            say("取消排队任务失败：" + (blob.splitlines()[-1] if blob else "未知错误"))
+            return False
+        say("当前 Kaggle CLI 不支持 kernels cancel，改为删除 kernel 释放 GPU 会话")
+        r = k("kernels", "delete", ref, quiet=True)
+        blob = ((r.stderr or "") + (r.stdout or "")).strip()
+        if r.returncode != 0 and "not found" not in blob.lower():
+            say("删除 kernel 失败：" + (blob.splitlines()[-1] if blob else "未知错误"))
+            return False
+        return True
+
+    say("已请求取消排队任务" + (f"：{blob.splitlines()[-1]}" if blob else ""))
+    t0 = time.time()
+    while time.time() - t0 < wait_s:
+        status = kernel_status(k, ref)
+        if status in ("CANCELED", "CANCEL_ACKNOWLEDGED", "CANCEL_REQUESTED",
+                      "ERROR", "COMPLETE", "FAILED"):
+            say("排队任务已结束：" + status)
+            return True
+        time.sleep(15)
+    say("取消请求已发出，但任务状态尚未结束，继续重新排队")
+    return True
 
 
 def report(dest):
@@ -329,6 +384,12 @@ def main():
     ap.add_argument("--no-run", action="store_true", help="只保存版本不运行（Quick Save）")
     ap.add_argument("--no-wait", action="store_true", help="推送后立即返回，不等待、不下载")
     ap.add_argument("--timeout", type=int, default=120, help="等待运行的分钟数（默认 120）")
+    ap.add_argument("--queue-timeout-min", type=int, default=3,
+                    help="排队超过多少分钟就取消并重新排队；0 表示一直等（默认 3）")
+    ap.add_argument("--queue-retries", type=int, default=3,
+                    help="排队超时后最多重新排队几次（默认 3）")
+    ap.add_argument("--queue-retry-delay", type=int, default=20,
+                    help="取消后等待多少秒再重新推送（默认 20）")
     ap.add_argument("--force-upload", action="store_true", help="素材没变也重新上传数据集")
     ap.add_argument("--kaggle", help='kaggle 命令，例如 "uv tool run kaggle"（默认自动探测）')
     args = ap.parse_args()
@@ -351,24 +412,40 @@ def main():
         ref = f"{user}/latentsync-inputs"
 
     prepare_dataset(k, args, ref, video, audio)
-    kernel = push_kernel(k, args, ref, user)
-    url = f"https://www.kaggle.com/code/{kernel}"
-    say("任务页：" + url)
 
-    if args.no_run:
-        say("已保存新版本（未运行）。去掉 --no-run 即可真正开跑。")
-        return
-    if args.no_wait:
-        say("已提交，未等待。之后查看：kaggle kernels status " + kernel)
+    if args.no_run or args.no_wait:
+        kernel = push_kernel(k, args, ref, user)
+        say("任务页：" + f"https://www.kaggle.com/code/{kernel}")
+        if args.no_run:
+            say("已保存新版本（未运行）。去掉 --no-run 即可真正开跑。")
+        else:
+            say("已提交，未等待。之后查看：kaggle kernels status " + kernel)
         return
 
     say("等待运行（首次含装依赖和下载权重，约 40–55 分钟）...")
-    status = wait_kernel(k, kernel, args.timeout * 60)
+    attempts = max(1, args.queue_retries)
+    queue_timeout_s = max(0, args.queue_timeout_min * 60)
+    status = None
+    for attempt in range(1, attempts + 1):
+        kernel = push_kernel(k, args, ref, user)
+        say("任务页：" + f"https://www.kaggle.com/code/{kernel}")
+        status = wait_kernel(k, kernel, args.timeout * 60, queue_timeout_s)
+        if status != "QUEUE_TIMEOUT":
+            break
+        if attempt >= attempts:
+            say(f"排队超时：重新排队 {attempts} 次仍未分配到 GPU，放弃")
+            break
+        say(f"排队超时：取消当前版本并重新排队（第 {attempt + 1}/{attempts} 次）")
+        cancel_kernel_run(k, kernel)
+        if args.queue_retry_delay > 0:
+            time.sleep(args.queue_retry_delay)
     run_id = args.run_id or datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
     dest = os.path.join(os.path.abspath(args.output_dir) if args.output_dir else RESULTS, run_id)
     os.makedirs(dest, exist_ok=True)
 
     if status != "COMPLETE":
+        if status == "QUEUE_TIMEOUT":
+            say(f"排队超时：重排 {attempts} 次仍未分配到 GPU，可稍后再跑或减少并发会话")
         say(f"运行结束状态：{status}，下载日志定位 ...")
         k("kernels", "output", kernel, "-p", dest, quiet=True)
         for name in os.listdir(dest):

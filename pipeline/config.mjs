@@ -36,6 +36,8 @@ const AVATAR_MODES = new Set(["none", "image", "video"]);
 const AVATAR_SHAPES = new Set(["rounded", "circle", "ellipse", "square", "diamond", "hexagon"]);
 const AVATAR_FITS = new Set(["contain", "cover"]);
 const AVATAR_MOTIONS = new Set(["none", "float", "breathe"]);
+const SUBTITLE_PLACEMENTS = new Set(["auto", "top", "middle", "bottom"]);
+const SUBTITLE_ALIGNS = new Set(["left", "center", "right"]);
 
 const clamp = (value, min, max, fallback) => {
   const n = Number(value);
@@ -59,6 +61,8 @@ export function normalizeLayout(raw = {}) {
       ? "video"
       : "none";
   const a = raw.avatar && typeof raw.avatar === "object" ? raw.avatar : {};
+  const b = raw.body && typeof raw.body === "object" ? raw.body : {};
+  const s = raw.subtitle && typeof raw.subtitle === "object" ? raw.subtitle : {};
   const width = clamp(a.width, 0.1, 1, legacyBottom ? 0.62 : 0.34);
   const height = clamp(a.aspect, 0.2, 3, 0.75); // width / height
   return {
@@ -78,6 +82,19 @@ export function normalizeLayout(raw = {}) {
     },
     avoid: raw.avoid !== false,
     gap: clamp(raw.gap, 0, 160, 24),
+    body: {
+      scale: Math.round(clamp(b.scale, 0.5, 2, 1) * 100) / 100,
+      offsetX: Math.round(clamp(b.offsetX, -540, 540, 0)),
+      offsetY: Math.round(clamp(b.offsetY, -960, 960, 0)),
+      width: Math.round(clamp(b.width, 40, 120, 100)),
+    },
+    subtitle: {
+      placement: SUBTITLE_PLACEMENTS.has(s.placement) ? s.placement : "auto",
+      align: SUBTITLE_ALIGNS.has(s.align) ? s.align : "center",
+      offsetX: Math.round(clamp(s.offsetX, -300, 300, 0)),
+      offsetY: Math.round(clamp(s.offsetY, -360, 360, 0)),
+      fontSize: Math.round(clamp(s.fontSize, 34, 80, 54)),
+    },
   };
 }
 

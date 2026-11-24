@@ -285,21 +285,97 @@ def push_kernel(kaggle_bin, env, kernel_dir, args):
     return version
 
 
-def wait_for_kernel(kaggle_bin, env, kernel_ref, timeout, interval):
+QUEUED_STATUSES = {"QUEUED", "QUEUING", "PENDING"}
+FINISHED_STATUSES = {"ERROR", "CANCELED", "CANCEL_ACKNOWLEDGED", "CANCEL_REQUESTED", "FAILED"}
+
+
+def kernel_status(kaggle_bin, env, kernel_ref):
+    result = kaggle(kaggle_bin, env, ["kernels", "status", kernel_ref], check=False)
+    return parse_status((result.stdout or "") + (result.stderr or ""))
+
+
+def wait_for_kernel(kaggle_bin, env, kernel_ref, timeout, interval, queue_timeout=0):
     deadline = time.time() + timeout
     last_status = None
+    queued_since = None
     while time.time() < deadline:
-        result = kaggle(kaggle_bin, env, ["kernels", "status", kernel_ref], check=False)
-        status = parse_status((result.stdout or "") + (result.stderr or ""))
+        status = kernel_status(kaggle_bin, env, kernel_ref)
         if status != last_status:
             log(f"状态: {status}")
             last_status = status
+        if status in QUEUED_STATUSES:
+            if queued_since is None:
+                queued_since = time.time()
+                log("排队中：等待 Kaggle 分配 GPU 会话")
+            else:
+                waited = int(time.time() - queued_since)
+                if queue_timeout > 0 and waited >= queue_timeout:
+                    log(f"排队 {waited} 秒仍未分配到 GPU 会话，超过上限 {queue_timeout} 秒")
+                    return "QUEUE_TIMEOUT"
+                suffix = f"（上限 {queue_timeout} 秒）" if queue_timeout > 0 else ""
+                log(f"排队中 {waited} 秒{suffix}")
+        else:
+            queued_since = None
         if status == "COMPLETE":
             return status
-        if status in {"ERROR", "CANCELED", "CANCEL_ACKNOWLEDGED", "CANCEL_REQUESTED"}:
+        if status in FINISHED_STATUSES:
             return status
         time.sleep(interval)
     return "TIMEOUT"
+
+
+def cancel_kernel_run(kaggle_bin, env, kernel_ref, wait_seconds=180, interval=15):
+    result = kaggle(kaggle_bin, env, ["kernels", "cancel", kernel_ref], check=False)
+    output = ((result.stdout or "") + (result.stderr or "")).strip()
+    if result.returncode != 0:
+        lowered = output.lower()
+        unsupported = any(
+            token in lowered
+            for token in ("no such command", "unrecognized", "unknown command", "invalid choice")
+        )
+        if not unsupported:
+            log(f"取消排队任务失败: {output.splitlines()[-1] if output else '未知错误'}")
+            return False
+        log("当前 Kaggle CLI 不支持 kernels cancel，改为删除 kernel 释放 GPU 会话")
+        delete = kaggle(kaggle_bin, env, ["kernels", "delete", kernel_ref], check=False)
+        delete_output = ((delete.stdout or "") + (delete.stderr or "")).strip()
+        if delete.returncode != 0 and "not found" not in delete_output.lower():
+            log(f"删除 kernel 失败: {delete_output.splitlines()[-1] if delete_output else '未知错误'}")
+            return False
+        return True
+
+    log(f"已请求取消排队任务: {output.splitlines()[-1] if output else 'ok'}")
+    deadline = time.time() + max(0, wait_seconds)
+    while time.time() < deadline:
+        status = kernel_status(kaggle_bin, env, kernel_ref)
+        if status in {"CANCELED", "CANCEL_ACKNOWLEDGED", "CANCEL_REQUESTED", "ERROR", "COMPLETE", "FAILED"}:
+            log(f"排队任务已结束: {status}")
+            return True
+        time.sleep(interval)
+    log("取消请求已发出，但任务状态尚未结束，继续重新排队")
+    return True
+
+
+def push_and_wait(args, kaggle_bin, env, kernel_dir, kernel_ref):
+    attempts = max(1, int(args.queue_retries or 1))
+    queue_timeout = max(0, int(args.queue_timeout or 0))
+    version = None
+    for attempt in range(1, attempts + 1):
+        version = push_kernel(kaggle_bin, env, kernel_dir, args)
+        status = wait_for_kernel(
+            kaggle_bin, env, kernel_ref, args.timeout, args.poll_interval, queue_timeout
+        )
+        if status != "QUEUE_TIMEOUT":
+            return status, version
+        if attempt >= attempts:
+            log(f"排队超时：重新排队 {attempts} 次仍未分配到 GPU 会话，放弃")
+            return status, version
+        log(f"排队超时：取消当前版本并重新排队（第 {attempt + 1}/{attempts} 次）")
+        cancel_kernel_run(kaggle_bin, env, kernel_ref)
+        delay = max(0, int(args.queue_retry_delay or 0))
+        if delay:
+            time.sleep(delay)
+    return "QUEUE_TIMEOUT", version
 
 
 def resolve_kernel_ref(args, username):
@@ -374,6 +450,12 @@ def build_parser():
     parser.add_argument("--timeout", type=int, default=10800, help="等待运行的秒数")
     parser.add_argument("--run-timeout", type=int, help="Kernel 最大运行秒数")
     parser.add_argument("--poll-interval", type=int, default=20)
+    parser.add_argument("--queue-timeout", type=int, default=180,
+                        help="排队超过多少秒就取消并重新排队；0 表示一直等（默认 180）")
+    parser.add_argument("--queue-retries", type=int, default=3,
+                        help="排队超时后最多重新排队几次（默认 3）")
+    parser.add_argument("--queue-retry-delay", type=int, default=20,
+                        help="取消后等待多少秒再重新推送（默认 20）")
     parser.add_argument("--no-wait", action="store_true", help="推送后立即返回")
     parser.add_argument("--dry-run", action="store_true", help="只生成请求与 kernel 文件，不调用 Kaggle")
     parser.add_argument("--json-out", help="把最终摘要写入 JSON 文件")
@@ -384,7 +466,12 @@ def build_parser():
 def run_resume(args, kaggle_bin, env, kernel_ref, out_root):
     job_id = args.resume
     log(f"等待已有任务: {job_id} ({kernel_ref})")
-    status = wait_for_kernel(kaggle_bin, env, kernel_ref, args.timeout, args.poll_interval)
+    status = wait_for_kernel(
+        kaggle_bin, env, kernel_ref, args.timeout, args.poll_interval,
+        max(0, int(args.queue_timeout or 0)),
+    )
+    if status == "QUEUE_TIMEOUT":
+        fail("排队超时：已有任务长时间未分配到 GPU 会话。去掉 --resume 重新提交会自动取消并重排。", code=1)
     log(f"最终状态: {status}")
     job_dir, log_path, result, audio_path = download_result(
         kaggle_bin, env, kernel_ref, job_id, out_root
@@ -456,41 +543,45 @@ def main():
         return
 
     dataset_action = publish_dataset(kaggle_bin, env, stage, request_dataset, job_id)
-    version = push_kernel(kaggle_bin, env, kernel_dir, args)
     kernel_url = f"https://www.kaggle.com/code/{kernel_ref}"
 
+    if args.no_wait:
+        version = push_kernel(kaggle_bin, env, kernel_dir, args)
+        summary = {
+            "status": "pushed",
+            "job_id": job_id,
+            "kernel": kernel_ref,
+            "kernel_version": version,
+            "kernel_url": kernel_url,
+            "request_dataset": request_dataset,
+            "dataset_action": dataset_action,
+        }
+        print(json.dumps(summary, ensure_ascii=False, indent=2))
+        if args.json_out:
+            Path(args.json_out).write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
+        return
+
+    status, version = push_and_wait(args, kaggle_bin, env, kernel_dir, kernel_ref)
+    log(f"最终状态: {status}")
+    job_dir, log_path, result, audio_path = download_result(kaggle_bin, env, kernel_ref, job_id, out_root)
+
+    ok = status == "COMPLETE" and result and result.get("status") == "ok" and audio_path is not None
     summary = {
-        "status": "pushed",
+        "status": "ok" if ok else "error",
         "job_id": job_id,
         "kernel": kernel_ref,
         "kernel_version": version,
         "kernel_url": kernel_url,
         "request_dataset": request_dataset,
         "dataset_action": dataset_action,
+        "kernel_status": status,
+        "log_path": str(log_path),
+        "result_path": str(job_dir / "result.json") if (job_dir / "result.json").is_file() else None,
+        "audio_path": str(audio_path) if audio_path else None,
+        "duration_sec": result.get("duration_sec") if result else None,
+        "error": None if ok else (result or {}).get("error") or f"kernel status {status}",
+        "kaggle_result": result,
     }
-    if args.no_wait:
-        print(json.dumps(summary, ensure_ascii=False, indent=2))
-        if args.json_out:
-            Path(args.json_out).write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
-        return
-
-    status = wait_for_kernel(kaggle_bin, env, kernel_ref, args.timeout, args.poll_interval)
-    log(f"最终状态: {status}")
-    job_dir, log_path, result, audio_path = download_result(kaggle_bin, env, kernel_ref, job_id, out_root)
-
-    ok = status == "COMPLETE" and result and result.get("status") == "ok" and audio_path is not None
-    summary.update(
-        {
-            "status": "ok" if ok else "error",
-            "kernel_status": status,
-            "log_path": str(log_path),
-            "result_path": str(job_dir / "result.json") if (job_dir / "result.json").is_file() else None,
-            "audio_path": str(audio_path) if audio_path else None,
-            "duration_sec": result.get("duration_sec") if result else None,
-            "error": None if ok else (result or {}).get("error") or f"kernel status {status}",
-            "kaggle_result": result,
-        }
-    )
     print(json.dumps(summary, ensure_ascii=False, indent=2))
     if args.json_out:
         Path(args.json_out).write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")

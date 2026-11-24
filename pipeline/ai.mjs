@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { PRIVATE_FILE, privateAi } from "./private.mjs";
+import { applyPromptRules } from "./prompts.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
@@ -62,7 +63,7 @@ export function resolveApiKey(cfg) {
   return "";
 }
 
-const SYSTEM = `你是竖屏口播短视频的分镜导演。把整篇文案切成 5-8 幕（信息块），并为每一幕选择版式、写标题与要点、指定配图意图。
+export const PLAN_SYSTEM = `你是竖屏口播短视频的分镜导演。把整篇文案切成 5-8 幕（信息块），并为每一幕选择版式、写标题与要点、指定配图意图。
 硬性要求：
 1) 必须覆盖全部句子，按原文顺序，不重不漏；每幕 1-4 句。
 2) layout 只能从给定枚举里选。
@@ -76,7 +77,7 @@ const SYSTEM = `你是竖屏口播短视频的分镜导演。把整篇文案切�
 10) 版式节奏要有变化，相邻两幕避免同一 layout（hero/closing 除外）。
 只输出 JSON，不要解释。`;
 
-function userPrompt(sentences, extra = "") {
+export function buildPlanUserPrompt(sentences, extra = "") {
   const list = sentences.map((s, i) => `${i + 1}. ${s}`).join("\n");
   return `文案共 ${sentences.length} 句：
 ${list}
@@ -153,10 +154,10 @@ async function requestPlan(cfg, key, sentences, opts, attempt) {
     max_tokens: cfg.maxTokens,
     response_format: { type: "json_object" },
     messages: [
-      { role: "system", content: SYSTEM },
+      { role: "system", content: applyPromptRules(PLAN_SYSTEM, "storyboard") },
       {
         role: "user",
-        content: userPrompt(sentences, [cfg.extraPrompt, opts.extra, retryNote].filter(Boolean).join("；")),
+        content: buildPlanUserPrompt(sentences, [cfg.extraPrompt, opts.extra, retryNote].filter(Boolean).join("；")),
       },
     ],
   };

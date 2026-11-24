@@ -952,6 +952,9 @@ def synth_kaggle(texts, outs, cfg, out_dir, ids):
         "--job-id", job_id,
         "--timeout", str(int(cfg.get("timeoutSec", 7200))),
         "--poll-interval", str(int(cfg.get("pollIntervalSec", 20))),
+        "--queue-timeout", str(int(cfg.get("queueTimeoutSec", 180))),
+        "--queue-retries", str(int(cfg.get("queueRetries", 3))),
+        "--queue-retry-delay", str(int(cfg.get("queueRetryDelaySec", 20))),
         "--repo-ref", cfg.get("repoRef", "main"),
         "--model-repo", cfg.get("modelRepo", "IndexTeam/IndexTTS-2.5"),
     ]
@@ -969,8 +972,9 @@ def synth_kaggle(texts, outs, cfg, out_dir, ids):
         env["KAGGLE_BIN"] = kaggle_bin
 
     print(
-        f"Kaggle 批量合成 {len(missing)} 句（排队 + 冷启动通常 10–20 分钟，"
-        f"超时 {cfg.get('timeoutSec', 7200)} 秒）...",
+        f"Kaggle 批量合成 {len(missing)} 句（排队 + 冷启动通常 10–20 分钟；"
+        f"排队超过 {cfg.get('queueTimeoutSec', 180)} 秒会取消重排，最多 {cfg.get('queueRetries', 3)} 次，"
+        f"总超时 {cfg.get('timeoutSec', 7200)} 秒）...",
         flush=True,
     )
     result = subprocess.run(cmd, cwd=str(runner.parent), env=env,

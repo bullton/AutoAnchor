@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadAiConfig, resolveApiKey } from "./ai.mjs";
+import { applyPromptRules } from "./prompts.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const MOTION_FILE = path.join(HERE, "motion.json");
@@ -223,7 +224,7 @@ export function fallbackRecipes(prompt, count = 3) {
   return out;
 }
 
-const SYSTEM = `你是竖屏口播视频的动效导演。根据用户描述，产出 3 套可执行的动效配方，只输出 JSON，不要解释。
+export const MOTION_SYSTEM = `你是竖屏口播视频的动效导演。根据用户描述，产出 3 套可执行的动效配方，只输出 JSON，不要解释。
 硬性要求：
 1) 每套配方只能从下列枚举取值，不得自创：
    enter: rise | wipe | zoom | blur | slide | fade
@@ -237,6 +238,10 @@ const SYSTEM = `你是竖屏口播视频的动效导演。根据用户描述，�
 3) name 是 2-6 个汉字，例如“快讯冲击”“冷静解读”。
 4) 3 套方案要有明显差异：一套偏快节奏、一套偏稳重、一套偏人物/图形聚焦。
 5) 输出结构：{"recipes":[{"name":"","enter":"","exit":"","photo":"","title":"","body":"","accent":"","intensity":1,"pace":"normal"}]}`;
+
+export function buildMotionUserPrompt({ prompt = "", sceneTitle = "", layout = "" } = {}) {
+  return `用户描述：${String(prompt || "").trim()}\n当前幕标题：${sceneTitle || "（未提供）"}\n当前版式：${layout || "（未提供）"}\n输出 3 套差异明显的配方。`;
+}
 
 export async function generateMotionRecipes({ prompt, sceneTitle = "", layout = "", count = 3 }) {
   const text = String(prompt || "").trim();
@@ -252,10 +257,10 @@ export async function generateMotionRecipes({ prompt, sceneTitle = "", layout = 
     max_tokens: 900,
     response_format: { type: "json_object" },
     messages: [
-      { role: "system", content: SYSTEM },
+      { role: "system", content: applyPromptRules(MOTION_SYSTEM, "motion") },
       {
         role: "user",
-        content: `用户描述：${text}\n当前幕标题：${sceneTitle || "（未提供）"}\n当前版式：${layout || "（未提供）"}\n输出 3 套差异明显的配方。`,
+        content: buildMotionUserPrompt({ prompt: text, sceneTitle, layout }),
       },
     ],
   };
@@ -436,7 +441,7 @@ export function fallbackAutoMotion(scenes = [], hint = "") {
   };
 }
 
-const AUTO_SYSTEM = `你是竖屏口播短视频的动效总导演。你会收到整篇文案的逐幕摘要，请先判断全片主题，再为每一幕单独设计动效，只输出 JSON，不要解释。
+export const AUTO_SYSTEM = `你是竖屏口播短视频的动效总导演。你会收到整篇文案的逐幕摘要，请先判断全片主题，再为每一幕单独设计动效，只输出 JSON，不要解释。
 硬性要求：
 1) 每幕配方只能从下列枚举取值，不得自创：
    enter: rise | wipe | zoom | blur | slide | fade
@@ -453,6 +458,25 @@ const AUTO_SYSTEM = `你是竖屏口播短视频的动效总导演。你会收�
 6) 版式含义：hero=开场大标题，band=常规信息条，bars=列表与数据，abstract=概念画面，compare=双栏对比，closing=结尾互动。
 7) 输出结构：{"theme":"6字内主题","summary":"一句话编排思路","scenes":[{"index":0,"name":"","enter":"","exit":"","photo":"","title":"","body":"","accent":"","intensity":1,"pace":"normal"}]}`;
 
+export function buildAutoDigest(list = []) {
+  return (Array.isArray(list) ? list : [])
+    .map((scene, index) => {
+      const speech = String(scene.speech || "").replace(/\s+/g, " ").slice(0, 400);
+      const number = scene.number ? `｜数字 ${scene.number}${scene.unit || ""}` : "";
+      const bullets = (scene.bullets || []).slice(0, 3).join("；");
+      const material = scene.materialName ? `｜素材：${scene.materialName}` : "";
+      return `${index + 1}. index=${index}｜标题：${scene.title || scene.barTitle || "未命名"}｜版式：${
+        scene.layout || "band"
+      }｜情绪：${scene.mood || "steady"}${number}${material}｜台词：${speech}${bullets ? `｜要点：${bullets}` : ""}`;
+    })
+    .join("\n");
+}
+
+export function buildAutoUserPrompt(list = [], hint = "") {
+  const digest = buildAutoDigest(list);
+  return `全片共 ${list.length} 幕。${hint ? `用户补充：${hint}\n` : "用户没有额外要求，请完全按文案判断。\n"}${digest}`;
+}
+
 export async function autoMotion({ scenes = [], hint = "" } = {}) {
   const list = Array.isArray(scenes) ? scenes.slice(0, 12) : [];
   if (!list.length) return { ok: false, reason: "no-scenes" };
@@ -460,17 +484,6 @@ export async function autoMotion({ scenes = [], hint = "" } = {}) {
   const cfg = loadAiConfig();
   const key = cfg.enabled ? resolveApiKey(cfg) : "";
   if (!cfg.enabled || !key) return local;
-
-  const digest = list
-    .map((scene, index) => {
-      const speech = String(scene.speech || "").replace(/\s+/g, " ").slice(0, 400);
-      const number = scene.number ? `｜数字 ${scene.number}${scene.unit || ""}` : "";
-      const bullets = (scene.bullets || []).slice(0, 3).join("；");
-      return `${index + 1}. index=${index}｜标题：${scene.title || scene.barTitle || "未命名"}｜版式：${
-        scene.layout || "band"
-      }｜情绪：${scene.mood || "steady"}${number}｜台词：${speech}${bullets ? `｜要点：${bullets}` : ""}`;
-    })
-    .join("\n");
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), Math.min(60000, cfg.timeoutMs || 60000));
@@ -485,10 +498,10 @@ export async function autoMotion({ scenes = [], hint = "" } = {}) {
         max_tokens: 2200,
         response_format: { type: "json_object" },
         messages: [
-          { role: "system", content: AUTO_SYSTEM },
+          { role: "system", content: applyPromptRules(AUTO_SYSTEM, "motion") },
           {
             role: "user",
-            content: `全片共 ${list.length} 幕。${hint ? `用户补充：${hint}\n` : "用户没有额外要求，请完全按文案判断。\n"}${digest}`,
+            content: buildAutoUserPrompt(list, hint),
           },
         ],
       }),
@@ -602,7 +615,7 @@ export function fallbackSceneRecipes({
   return refineSceneCandidates(list, [current, prev, next]);
 }
 
-const SCENE_SYSTEM = `你是竖屏口播视频的动效导演。现在只重排其中一幕，不要改动其他幕的编排。只输出 JSON，不要解释。
+export const SCENE_SYSTEM = `你是竖屏口播视频的动效导演。现在只重排其中一幕，不要改动其他幕的编排。只输出 JSON，不要解释。
 硬性要求：
 1) 配方只能从下列枚举取值，不得自创：
    enter: rise | wipe | zoom | blur | slide | fade
@@ -617,6 +630,27 @@ const SCENE_SYSTEM = `你是竖屏口播视频的动效导演。现在只重排�
 4) 保持全片主题基调，但这一幕可以有自己的作用：开场抓人、信息收敛、重点抬升、引语放慢、结尾收束。
 5) name 是 2-6 个汉字，两套名字不要相同。
 6) 输出结构：{"recipes":[{"name":"","enter":"","exit":"","photo":"","title":"","body":"","accent":"","intensity":1,"pace":"normal"}]}`;
+
+export function buildSceneUserPrompt({
+  scene = {},
+  sceneIndex = 0,
+  total = 1,
+  theme = "",
+  current = null,
+  prev = null,
+  next = null,
+  hint = "",
+} = {}) {
+  const sig = (recipe) => (recipe ? `${recipe.enter}/${recipe.photo}/${recipe.title}/${recipe.accent}` : "（无）");
+  const speech = String(scene.speech || "").replace(/\s+/g, " ").slice(0, 400);
+  return `全片主题：${theme || "自动判断"}
+这是第 ${sceneIndex + 1}/${total} 幕，标题：${scene.title || scene.barTitle || "未命名"}，版式：${scene.layout || "band"}，情绪：${scene.mood || "steady"}
+当前幕配方：${sig(current)}
+前一幕配方：${sig(prev)}
+后一幕配方：${sig(next)}
+台词：${speech}
+${hint ? `用户补充：${hint}\n` : ""}输出 2 套只替换这一幕的候选。`;
+}
 
 export async function generateSceneMotion({
   scene = {},
@@ -634,15 +668,7 @@ export async function generateSceneMotion({
   const key = cfg.enabled ? resolveApiKey(cfg) : "";
   if (!cfg.enabled || !key) return { ok: true, recipes: fallback, model: null, fallback: true, reason: "no-ai" };
 
-  const sig = (recipe) => (recipe ? `${recipe.enter}/${recipe.photo}/${recipe.title}/${recipe.accent}` : "（无）");
-  const speech = String(scene.speech || "").replace(/\s+/g, " ").slice(0, 400);
-  const user = `全片主题：${theme || "自动判断"}
-这是第 ${sceneIndex + 1}/${total} 幕，标题：${scene.title || scene.barTitle || "未命名"}，版式：${scene.layout || "band"}，情绪：${scene.mood || "steady"}
-当前幕配方：${sig(current)}
-前一幕配方：${sig(prev)}
-后一幕配方：${sig(next)}
-台词：${speech}
-${hint ? `用户补充：${hint}\n` : ""}输出 2 套只替换这一幕的候选。`;
+  const user = buildSceneUserPrompt({ scene, sceneIndex, total, theme, current, prev, next, hint });
 
   let data = null;
   let reason = "empty";
@@ -659,7 +685,7 @@ ${hint ? `用户补充：${hint}\n` : ""}输出 2 套只替换这一幕的候选
           max_tokens: 1800,
           response_format: { type: "json_object" },
           messages: [
-            { role: "system", content: SCENE_SYSTEM },
+            { role: "system", content: applyPromptRules(SCENE_SYSTEM, "motion") },
             { role: "user", content: user },
           ],
         }),

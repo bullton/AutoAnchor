@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>后台配置 · 口播工坊</title>
+  <link rel="stylesheet" href="admin.css" />
+  <script src="admin.js" defer></script>
+</head>
+<body>
+  <div class="ambient" aria-hidden="true"></div>
+
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 32 32" fill="none">
+          <circle cx="16" cy="16" r="12" stroke="currentColor" stroke-width="1.4" opacity=".35"/>
+          <path d="M16 4a12 12 0 0 1 12 12" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>
+          <circle cx="16" cy="16" r="3.2" fill="currentColor"/>
+        </svg>
+      </div>
+      <div class="brand-text">
+        <strong>口播工坊</strong>
+        <span>ADMIN / PROMPT</span>
+      </div>
+    </div>
+    <div class="top-note">公共规则会追加到分镜与动效的每一段 prompt 末尾</div>
+    <div class="top-actions">
+      <a class="btn ghost" href="/">返回控制台</a>
+      <span class="save-state" id="saveState">已保存</span>
+      <button class="btn primary" id="saveBtn" type="button">保存规则</button>
+    </div>
+  </header>
+
+  <main class="admin">
+    <section class="col col-edit">
+      <div class="panel-head">
+        <div>
+          <div class="eyebrow">GLOBAL RULES</div>
+          <h1>Prompt 公共规则</h1>
+          <p>这些文本只影响发给 AI 的分镜与动效请求，不改文案、配音和成片参数。留空表示不追加。</p>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <span>公共规则</span>
+          <span class="hint">追加到所有请求</span>
+        </div>
+        <textarea id="ruleGlobal" rows="7" placeholder="例如：语气克制、不夸张；标题避免感叹句；配图涉及人物时优先中国人/华人。"></textarea>
+        <div class="field-foot"><span class="muted">适合放跨环节都成立的统一要求。</span><b id="countGlobal">0 字</b></div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <span>分镜规则</span>
+          <span class="hint">只作用于切幕、版式、配图意图</span>
+        </div>
+        <textarea id="ruleStoryboard" rows="6" placeholder="例如：每幕不超过 3 句；数据类文案优先用 number/bars 版式；标题控制在 14 字以内。"></textarea>
+        <div class="field-foot"><span class="muted">不要写与内置枚举冲突的版式名。</span><b id="countStoryboard">0 字</b></div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <span>动效规则</span>
+          <span class="hint">只作用于全片编排与单幕重排</span>
+        </div>
+        <textarea id="ruleMotion" rows="6" placeholder="例如：整体克制，位移不超过 40px；数据幕用扫描感；结尾放慢；避免连续两幕都用缩放。"></textarea>
+        <div class="field-foot"><span class="muted">只描述节奏与手法，不要自创枚举值。</span><b id="countMotion">0 字</b></div>
+      </div>
+    </section>
+
+    <aside class="col col-side">
+      <div class="card">
+        <div class="card-head">
+          <span>合并后的效果</span>
+          <button class="btn tiny ghost" id="previewBtn" type="button">刷新预览</button>
+        </div>
+        <p class="muted small">下面是当前实际会发给模型的系统规则（未保存的修改不会出现在这里）。</p>
+        <div class="preview-block">
+          <div class="preview-head"><span>分镜</span><span id="previewStoryboardCount" class="muted small"></span></div>
+          <pre id="previewStoryboard">读取中…</pre>
+        </div>
+        <div class="preview-block">
+          <div class="preview-head"><span>动效</span><span id="previewMotionCount" class="muted small"></span></div>
+          <pre id="previewMotion">读取中…</pre>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <span>AI 连接</span>
+          <span class="mini-tag" id="aiTag">读取中</span>
+        </div>
+        <div class="ai-grid">
+          <label class="switch-row">
+            <input type="checkbox" id="aiEnabled" />
+            <span class="switch"></span>
+            <span><b>启用 AI</b><small>关闭时全部走本地规则回退</small></span>
+          </label>
+          <div class="field wide">
+            <label for="aiBaseUrl">接口地址</label>
+            <input type="text" id="aiBaseUrl" class="mono" placeholder="https://api.openai.com/v1" />
+          </div>
+          <div class="two-fields">
+            <div class="field">
+              <label for="aiModel">模型</label>
+              <input type="text" id="aiModel" placeholder="gpt-4o-mini" />
+            </div>
+            <div class="field">
+              <label for="aiKeyEnv">Key 环境变量名</label>
+              <input type="text" id="aiKeyEnv" class="mono" placeholder="OPENAI_API_KEY" />
+            </div>
+          </div>
+          <div class="field wide">
+            <label for="aiApiKey">API Key</label>
+            <input type="password" id="aiApiKey" class="mono" placeholder="留空表示沿用已保存的 Key" autocomplete="off" />
+          </div>
+          <div class="two-fields">
+            <div class="field">
+              <label for="aiTemperature">温度</label>
+              <input type="number" id="aiTemperature" min="0" max="2" step="0.05" />
+            </div>
+            <div class="field">
+              <label for="aiMaxTokens">max tokens</label>
+              <input type="number" id="aiMaxTokens" min="400" max="8000" step="100" />
+            </div>
+          </div>
+        </div>
+        <div class="field-foot">
+          <span class="muted small">密钥只写入本机私有配置，不会回传到页面。</span>
+          <button class="btn small" id="saveAiBtn" type="button">保存 AI 设置</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><span>生效说明</span></div>
+        <ul class="notes">
+          <li>规则保存后立即生效，无需重启服务。</li>
+          <li>调试窗里的 prompt 会按新规则重新组装。</li>
+          <li>已生成的成片不会自动重做，需要重新跑生成流程。</li>
+        </ul>
+      </div>
+    </aside>
+  </main>
+
+  <div class="toasts" id="toasts" aria-live="polite"></div>
+</body>
+</html>

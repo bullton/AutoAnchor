@@ -37,6 +37,19 @@ const DEFAULT_LAYOUT = {
   },
   avoid: true,
   gap: 24,
+  body: {
+    scale: 1,
+    offsetX: 0,
+    offsetY: 0,
+    width: 100,
+  },
+  subtitle: {
+    placement: "auto",
+    align: "center",
+    offsetX: 0,
+    offsetY: 0,
+    fontSize: 54,
+  },
 };
 
 const clampNumber = (value, min, max, fallback) => {
@@ -69,6 +82,8 @@ function normalizeDigitalHuman(raw) {
 function normalizeLayout(raw) {
   const src = raw && typeof raw === "object" ? raw : {};
   const a = src.avatar && typeof src.avatar === "object" ? src.avatar : {};
+  const b = src.body && typeof src.body === "object" ? src.body : {};
+  const s = src.subtitle && typeof src.subtitle === "object" ? src.subtitle : {};
   const mode = LAYOUT_MODES[src.mode] ? src.mode : "none";
   return {
     mode,
@@ -87,6 +102,19 @@ function normalizeLayout(raw) {
     },
     avoid: src.avoid !== false,
     gap: clampNumber(src.gap, 0, 160, 24),
+    body: {
+      scale: Math.round(clampNumber(b.scale, 0.5, 2, 1) * 100) / 100,
+      offsetX: Math.round(clampNumber(b.offsetX, -540, 540, 0)),
+      offsetY: Math.round(clampNumber(b.offsetY, -960, 960, 0)),
+      width: Math.round(clampNumber(b.width, 40, 120, 100)),
+    },
+    subtitle: {
+      placement: ["auto", "top", "middle", "bottom"].includes(s.placement) ? s.placement : "auto",
+      align: ["left", "center", "right"].includes(s.align) ? s.align : "center",
+      offsetX: Math.round(clampNumber(s.offsetX, -300, 300, 0)),
+      offsetY: Math.round(clampNumber(s.offsetY, -360, 360, 0)),
+      fontSize: Math.round(clampNumber(s.fontSize, 34, 80, 54)),
+    },
   };
 }
 
@@ -618,27 +646,21 @@ function previewFitSize(text, maxWidth, maxSize, minSize) {
 }
 
 function previewSplitTitle(chars) {
-  if (chars.length <= 3) return chars.length;
-  const total = previewTextUnits(chars.join(""));
-  let best = Math.ceil(chars.length / 2);
-  let bestDiff = Infinity;
-  for (let i = 1; i < chars.length; i += 1) {
-    const diff = Math.abs(total - previewTextUnits(chars.slice(0, i).join("")) * 2);
-    if (diff <= bestDiff) {
-      bestDiff = diff;
-      best = i;
-    }
+  if (typeof window === "undefined" || !window.OdTitleBreak) {
+    return Math.ceil(chars.length / 2);
   }
-  return best;
+  return window.OdTitleBreak.splitTitleIndex(chars.join(""));
 }
 
 function previewTitleLines(text, usable, maxSize, minSize) {
   const chars = Array.from(String(text || "").trim());
   if (!chars.length) return null;
-  const splitAt = previewSplitTitle(chars);
-  const lines = [chars.slice(0, splitAt).join(""), chars.slice(splitAt).join("")].filter(Boolean);
+  const lines = typeof window !== "undefined" && window.OdTitleBreak
+    ? window.OdTitleBreak.splitTitleLines(chars.join(""))
+    : [chars.join("")];
+  const unitOf = typeof window !== "undefined" && window.OdTitleBreak ? window.OdTitleBreak.textUnits : previewTextUnits;
   const maxChars = Math.max(...lines.map((line) => Array.from(line).length));
-  const maxUnits = Math.max(...lines.map((line) => previewTextUnits(line)));
+  const maxUnits = Math.max(...lines.map((line) => unitOf(line)));
   const size = Math.max(minSize, Math.min(maxSize, Math.floor((usable - maxChars) / (maxUnits * 1.03))));
   return { lines, size };
 }
@@ -690,7 +712,7 @@ function currentUi() {
 }
 
 function uiLayout() {
-  if (!state.config.ui.layout || typeof state.config.ui.layout !== "object") {
+  if (!state.config.ui.layout || typeof state.config.ui.layout !== "object" || !state.config.ui.layout.body) {
     state.config.ui.layout = normalizeLayout(state.config.ui.layout);
   }
   return state.config.ui.layout;
@@ -1147,6 +1169,27 @@ function syncLayoutControls() {
   $("#borderColorValue").textContent = a.borderColor.toUpperCase();
   $("#frameInput").checked = a.frame !== false;
   $("#avoidInput").checked = layout.avoid !== false;
+  const body = layout.body || { scale: 1, offsetX: 0, offsetY: 0, width: 100 };
+  $("#bodyScale").value = String(Math.round(body.scale * 100));
+  $("#bodyScaleValue").textContent = `${Math.round(body.scale * 100)}%`;
+  $("#bodyScaleTag").textContent = `${Math.round(body.scale * 100)}%`;
+  $("#bodyOffsetY").value = String(body.offsetY);
+  $("#bodyOffsetYValue").textContent = `${body.offsetY}px`;
+  $("#bodyOffsetX").value = String(body.offsetX);
+  $("#bodyOffsetXValue").textContent = `${body.offsetX}px`;
+  $("#bodyWidth").value = String(body.width);
+  $("#bodyWidthValue").textContent = `${body.width}%`;
+  const subtitle = layout.subtitle;
+  $("#subtitlePlacement").value = subtitle.placement;
+  $("#subtitlePlacementTag").textContent =
+    { auto: "自动避让", bottom: "底部", middle: "居中", top: "顶部" }[subtitle.placement] || "自动避让";
+  $("#subtitleAlign").value = subtitle.align;
+  $("#subtitleOffsetX").value = String(subtitle.offsetX);
+  $("#subtitleOffsetXValue").textContent = `${subtitle.offsetX}px`;
+  $("#subtitleOffsetY").value = String(subtitle.offsetY);
+  $("#subtitleOffsetYValue").textContent = `${subtitle.offsetY}px`;
+  $("#subtitleFontSize").value = String(subtitle.fontSize);
+  $("#subtitleFontSizeValue").textContent = `${subtitle.fontSize}px`;
   $$("#anchorGrid button").forEach((btn) =>
     btn.classList.toggle(
       "active",
@@ -1154,6 +1197,7 @@ function syncLayoutControls() {
     ),
   );
   renderPreviewAvatar();
+  schedulePreviewRefresh();
 }
 
 function renderPreviewAvatar() {
@@ -1313,9 +1357,10 @@ async function saveLayoutPreset() {
 function renderStyleGrid() {
   const ui = currentUi();
   const copy = previewSeriesCopy();
-  const titleChars = Array.from(copy.title || "在这里写标题");
-  const splitAt = titleChars.length > 4 ? Math.ceil(titleChars.length / 2) : titleChars.length;
-  const titleHtml = `${esc(titleChars.slice(0, splitAt).join(""))}<br />${esc(titleChars.slice(splitAt).join(""))}`;
+  const titleLines = typeof window !== "undefined" && window.OdTitleBreak
+    ? window.OdTitleBreak.splitTitleLines(copy.title || "在这里写标题")
+    : [copy.title || "在这里写标题"];
+  const titleHtml = titleLines.map((line) => esc(line)).join("<br />");
   const activeId = STYLES[ui.styleId] ? ui.styleId : Object.keys(STYLES)[0];
 
   const picks = Object.entries(STYLES)
@@ -1917,6 +1962,192 @@ async function refreshMotionPanel() {
   }
 }
 
+const promptUi = { open: false, tab: "storyboard", scene: 0, bundle: null, loading: false };
+
+function promptTabData() {
+  const bundle = promptUi.bundle;
+  if (!bundle) return null;
+  return bundle[promptUi.tab] || null;
+}
+
+function promptText() {
+  const data = promptTabData();
+  if (!data) return "";
+  return `=== 系统规则 ===\n${data.system || ""}\n\n=== 请求内容 ===\n${data.user || ""}`;
+}
+
+function renderPromptDrawer() {
+  const drawer = $("#promptDrawer");
+  if (!drawer || drawer.classList.contains("hidden")) return;
+  const bundle = promptUi.bundle;
+  const data = promptTabData();
+
+  $$("#pxTabs button[data-px]").forEach((btn) => {
+    btn.classList.toggle("active", btn.dataset.px === promptUi.tab);
+  });
+  $("#pxSceneRow").classList.toggle("hidden", promptUi.tab !== "scene");
+
+  const meta = $("#pxMeta");
+  if (bundle) {
+    const ctx = bundle.context || {};
+    const ai = bundle.ai || {};
+    const chips = [
+      `<span class="px-chip">模型 <b>${esc(ai.model || "—")}</b></span>`,
+      `<span class="px-chip ${ai.enabled ? (ai.hasKey ? "ok" : "warn") : ""}">${
+        ai.enabled ? (ai.hasKey ? "已启用 · 有 Key" : "已启用 · 缺 Key") : "未启用 · 走本地回退"
+      }</span>`,
+      `<span class="px-chip">文案 ${ctx.sentences || 0} 句</span>`,
+      `<span class="px-chip">分镜 ${ctx.scenes || 0} 幕</span>`,
+      `<span class="px-chip">素材 ${ctx.materials || 0} 张</span>`,
+      ctx.storyboard?.stale
+        ? `<span class="px-chip warn">分镜待更新</span>`
+        : `<span class="px-chip ok">分镜已同步</span>`,
+    ];
+    meta.innerHTML = chips.join("");
+  } else {
+    meta.innerHTML = "";
+  }
+
+  const sceneRow = $("#pxSceneRow");
+  const select = $("#pxScene");
+  const sceneList = bundle?.context?.sceneMaterials || [];
+  if (select && sceneList.length) {
+    const signature = sceneList.map((item) => `${item.index}:${item.title}:${item.material}`).join("|");
+    if (select.dataset.signature !== signature) {
+      select.dataset.signature = signature;
+      select.innerHTML = sceneList
+        .map(
+          (item) =>
+            `<option value="${item.index}">${String(item.index + 1).padStart(2, "0")} · ${esc(
+              item.title || "未命名",
+            )}${item.material ? `（${esc(item.material)}）` : ""}</option>`,
+        )
+        .join("");
+    }
+    select.value = String(promptUi.scene);
+    sceneRow.classList.toggle("hidden", promptUi.tab !== "scene");
+  } else if (sceneRow) {
+    sceneRow.classList.add("hidden");
+  }
+
+  const note = $("#pxNote");
+  if (!data || !data.available) {
+    note.classList.remove("hidden");
+    note.textContent = data?.note || "暂时没有可展示的内容";
+  } else {
+    note.classList.add("hidden");
+    note.textContent = "";
+  }
+
+  const params = $("#pxParams");
+  if (data && data.params) {
+    const p = data.params;
+    params.innerHTML = [
+      ["模型", p.model],
+      ["温度", p.temperature],
+      ["max tokens", p.maxTokens],
+      ["超时", p.timeoutMs ? `${p.timeoutMs} ms` : "—"],
+    ]
+      .filter(([, value]) => value !== undefined && value !== null && value !== "")
+      .map(([key, value]) => `<span class="px-param"><i>${esc(key)}</i><b>${esc(value)}</b></span>`)
+      .join("");
+  } else {
+    params.innerHTML = "";
+  }
+
+  const system = data?.system || "";
+  const user = data?.user || "";
+  $("#pxSystem").textContent = system;
+  $("#pxUser").textContent = user;
+  $("#pxSystemCount").textContent = system ? `${system.length} 字` : "";
+  $("#pxUserCount").textContent = user ? `${user.length} 字` : "";
+
+  const rules = bundle?.rules || {};
+  const ruleChars = ["global", "storyboard", "motion"]
+    .map((key) => String(rules[key] || "").length)
+    .reduce((sum, n) => sum + n, 0);
+  const stamp = bundle?.generatedAt ? new Date(bundle.generatedAt).toLocaleTimeString("zh-CN", { hour12: false }) : "";
+  $("#pxFootNote").textContent = `按当前文案与素材现场生成${stamp ? ` · ${stamp}` : ""}${
+    ruleChars ? ` · 公共规则共 ${ruleChars} 字` : " · 未设置公共规则"
+  }`;
+}
+
+async function loadPromptDebug(sceneIndex = promptUi.scene) {
+  if (promptUi.loading) return;
+  promptUi.loading = true;
+  $("#pxRefresh").disabled = true;
+  try {
+    const data = await api(`/api/prompts?scene=${encodeURIComponent(Math.max(0, Number(sceneIndex) || 0))}`);
+    promptUi.bundle = data;
+    promptUi.scene = Math.max(0, Number(data?.scene?.index) || 0);
+    renderPromptDrawer();
+  } catch (err) {
+    promptUi.bundle = null;
+    renderPromptDrawer();
+    const note = $("#pxNote");
+    note.classList.remove("hidden");
+    note.textContent = `读取失败：${err.message || err}`;
+  } finally {
+    promptUi.loading = false;
+    $("#pxRefresh").disabled = false;
+  }
+}
+
+async function openPromptDrawer() {
+  promptUi.open = true;
+  promptUi.scene = Math.max(0, Number(state.motionSceneIndex) || 0);
+  $("#promptDrawer").classList.remove("hidden");
+  $("#promptDrawer").setAttribute("aria-hidden", "false");
+  document.body.classList.add("px-open");
+  await loadPromptDebug();
+}
+
+function closePromptDrawer() {
+  promptUi.open = false;
+  $("#promptDrawer").classList.add("hidden");
+  $("#promptDrawer").setAttribute("aria-hidden", "true");
+  document.body.classList.remove("px-open");
+}
+
+async function copyPromptText() {
+  const text = promptText();
+  if (!text.trim()) {
+    toast("当前没有可复制的 prompt", "error");
+    return;
+  }
+  try {
+    await navigator.clipboard.writeText(text);
+    toast("已复制 prompt", "ok");
+  } catch {
+    const area = document.createElement("textarea");
+    area.value = text;
+    area.style.position = "fixed";
+    area.style.opacity = "0";
+    document.body.appendChild(area);
+    area.select();
+    document.execCommand("copy");
+    area.remove();
+    toast("已复制 prompt", "ok");
+  }
+}
+
+function downloadPromptText() {
+  const text = promptText();
+  if (!text.trim()) {
+    toast("当前没有可下载的 prompt", "error");
+    return;
+  }
+  const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `prompt-${promptUi.tab}-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-")}.txt`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 function storyboardData() {
   return state.prep?.storyboard || state.motion?.storyboard || {};
 }
@@ -1934,6 +2165,11 @@ function renderStoryboardStatus() {
   const detail = $("#storyboardDetail");
   const retry = $("#storyboardRetry");
   const refresh = $("#storyboardRefresh");
+  const pregen = $("#scriptPregenBtn");
+  if (pregen) {
+    pregen.disabled = running || Boolean(state.runActive);
+    pregen.textContent = running ? "生成中…" : "预生成";
+  }
   const progress = $("#prepProgress");
   if (!dot || !label || !detail) return;
 
@@ -2144,6 +2380,8 @@ function previewPhotoUrl(scene) {
 }
 
 function previewAvatarUrl(src) {
+  if (!src) return "";
+  if (/^https?:/i.test(src)) return src;
   const name = basename(src);
   return name ? `/media/avatar/${encodeURIComponent(name)}` : "";
 }
@@ -2202,11 +2440,80 @@ function previewAvatar(layout) {
   const shapeStyle = clip ? `clip-path:${clip};` : `border-radius:${radius};`;
   const innerRadius = radius === "50%" ? "50%" : Math.max(0, Number(parseInt(radius, 10)) - ring) + "px";
   const fit = shape === "rounded" && avatar.fit === "contain" ? "contain" : "cover";
+  const mediaUrl = esc(previewAvatarUrl(avatar.src));
+  const mediaStyle = "width:100%;height:100%;object-fit:" + fit + ";object-position:center 40%;display:block";
+  const isVideo = /\.(mp4|webm|mov)(\?|$)/i.test(avatar.src || "");
+  const media = isVideo
+    ? '<video src="' + mediaUrl + '" style="' + mediaStyle + '" muted loop autoplay playsinline preload="auto"></video>'
+    : '<img src="' + mediaUrl + '" style="' + mediaStyle + '" alt="" />';
+  const tag = isVideo
+    ? '<span class="mp-avatar-tag">数字人视频</span>'
+    : "";
   return '<div style="position:absolute;left:' + (cx - width / 2) + "px;top:" + (cy - height / 2) + "px;width:" + width + "px;height:" + height + "px;z-index:15;background:" + (ring > 0 ? esc(avatar.borderColor || "#E8A33D") : "transparent") + ";" + shapeStyle + "box-sizing:border-box;filter:drop-shadow(0 22px 46px rgba(14,17,22,0.8))" + '">' +
     '<div style="position:absolute;inset:' + ring + "px;background:#161B23;" + (clip ? `clip-path:${clip};` : `border-radius:${innerRadius};overflow:hidden;`) + '">' +
-      '<img src="' + previewAvatarUrl(avatar.src) + '" style="width:100%;height:100%;object-fit:' + fit + ';object-position:center 40%;display:block" alt="" />' +
+      media +
     '</div>' +
+    tag +
   '</div>';
+}
+
+function previewSubtitle(layout, scene) {
+  const s = layout?.subtitle || {};
+  const placement = ["auto", "bottom", "middle", "top"].includes(s.placement) ? s.placement : "auto";
+  const align = ["left", "center", "right"].includes(s.align) ? s.align : "center";
+  const offsetX = previewNum(s.offsetX, -300, 300, 0);
+  const offsetY = previewNum(s.offsetY, -360, 360, 0);
+  const fontSize = Math.round(previewNum(s.fontSize, 34, 80, 54));
+  const sample = Array.from(
+    String(scene?.bullets?.[0] || scene?.kicker || scene?.title || "字幕位置预览"),
+  ).slice(0, 16).join("");
+  let x = PREVIEW_W / 2 + offsetX;
+  let y = PREVIEW_H - 240 + offsetY;
+  let translateX = "-50%";
+  let translateY = "-100%";
+  let width = PREVIEW_W - 160;
+  if (placement !== "auto") {
+    if (placement === "top") {
+      y = 300 + offsetY;
+      translateY = "0";
+    } else if (placement === "middle") {
+      y = PREVIEW_H / 2 + offsetY;
+      translateY = "-50%";
+    } else {
+      y = PREVIEW_H - 270 + offsetY;
+      translateY = "-100%";
+    }
+  } else {
+    const avatar = layout?.avatar;
+    const hasAvatar = layout?.mode !== "none" && Boolean(avatar && avatar.src);
+    if (hasAvatar && layout.avoid !== false) {
+      const w = Math.max(0, Math.min(PREVIEW_W, (Number(avatar.width) || 0.34) * PREVIEW_W));
+      const h = w / previewShapeAspect(avatar.shape || "rounded", Number(avatar.aspect) || 0.75);
+      const cx = Math.min(PREVIEW_W, Math.max(0, (Number(avatar.x) || 0.5) * PREVIEW_W));
+      const cy = Math.min(PREVIEW_H, Math.max(0, (Number(avatar.y) || 0.76) * PREVIEW_H));
+      const gap = Math.max(0, Number(layout.gap) || 0);
+      if (Math.abs((Number(avatar.x) || 0.5) - 0.5) < 0.09) {
+        const top = Math.max(0, cy - h / 2);
+        const marginV = Math.max(240, Math.min(PREVIEW_H * 0.62, PREVIEW_H - top + gap));
+        y = PREVIEW_H - marginV + offsetY;
+        translateY = "-100%";
+      } else {
+        const left = cx - w / 2;
+        const right = cx + w / 2;
+        const edge = (Number(avatar.x) || 0.5) > 0.5 ? left : PREVIEW_W - right;
+        x = Math.round(edge / 2) + 9 + offsetX;
+        y = Math.round(cy) + offsetY;
+        translateX = align === "left" ? "0" : align === "right" ? "-100%" : "-50%";
+        translateY = "-50%";
+        width = Math.max(320, edge - 80);
+      }
+    }
+  }
+  return '<div class="mp-subtitle" style="position:absolute;left:' + x + "px;top:" + y + "px;width:" + width +
+    "px;transform:translate(" + translateX + "," + translateY + ");z-index:18;pointer-events:none;text-align:" + align +
+    ";font-family:Microsoft YaHei,'PingFang SC',sans-serif;font-size:" + fontSize +
+    "px;font-weight:700;line-height:1.3;color:#f5f1ea;letter-spacing:1px;text-shadow:0 2px 6px rgba(0,0,0,0.8),0 0 3px rgba(0,0,0,0.9)\">" +
+    esc(sample) + "</div>";
 }
 
 function previewMasthead(pal) {
@@ -2255,12 +2562,14 @@ function previewTitleBar(scene, pal) {
   if (!text) return "";
   const look = previewLook();
   const centered = look.align === "center";
-  const chars = Array.from(text);
-  const perLine = Math.max(1, Math.ceil(chars.length / 2));
-  const size = Math.max(34, Math.min(54, Math.floor((948 - perLine * 1.2) / (perLine * 1.03))));
+  const fit = previewTitleLines(text, 948, 54, 34);
+  const size = fit?.size ?? 34;
+  const linesHtml = (fit?.lines || [text])
+    .map((line) => '<div style="white-space:nowrap">' + esc(line) + "</div>")
+    .join("");
   return '<div style="position:absolute;left:0;top:0;width:' + PREVIEW_W + "px;height:640px;overflow:hidden;z-index:20;background:linear-gradient(180deg," + pal.bg + "F2 0%," + pal.bg + "DE 42%," + pal.bg + "A8 68%," + pal.bg + "52 86%," + pal.bg + '00 100%)">' +
     '<div style="position:absolute;left:' + PREVIEW_SIDE + "px;top:500px;width:948px;display:flex;align-items:center;justify-content:" + (centered ? "center" : "flex-start") + '">' +
-      '<div style="font-family:' + look.display + ";font-size:" + size + "px;line-height:1.22;letter-spacing:" + look.track + "px;font-weight:" + look.weight + ";text-transform:" + (look.upper ? "uppercase" : "none") + ";color:" + pal.ink + ";width:100%;text-align:" + (centered ? "center" : "left") + ';display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;text-shadow:0 3px 22px rgba(0,0,0,0.5)">' + esc(text) + '</div>' +
+      '<div style="font-family:' + look.display + ";font-size:" + size + "px;line-height:1.22;letter-spacing:" + look.track + "px;font-weight:" + look.weight + ";text-transform:" + (look.upper ? "uppercase" : "none") + ";color:" + pal.ink + ";width:100%;text-align:" + (centered ? "center" : "left") + ';display:flex;flex-direction:column;justify-content:center;overflow:hidden;text-shadow:0 3px 22px rgba(0,0,0,0.5)">' + linesHtml + '</div>' +
     '</div>' +
   '</div>';
 }
@@ -2270,7 +2579,7 @@ function previewSceneHtml(scene, styleOverride) {
   const material = Boolean(scene && scene.photoSource === "material" && scene.layout !== "closing");
   const style = normalizeSceneLayoutClient(styleOverride || scene?.layoutStyle);
   const preset = material ? style.preset : "full";
-  const layout = state.motion?.layout || { mode: "none" };
+  const layout = state.dirty ? uiLayout() : state.motion?.layout || uiLayout();
   const box = previewSafeBox(layout);
   const photoBox = preset === "top"
     ? { left: 0, top: 500, width: PREVIEW_W, height: 440 }
@@ -2287,6 +2596,13 @@ function previewSceneHtml(scene, styleOverride) {
   const contentLeft = baseLeft + shift;
   const contentWidth = Math.max(240, baseWidth - shift);
   const justify = style.contentAlign === "center" ? "center" : style.contentAlign === "right" ? "flex-end" : "flex-start";
+  const body = layout.body || {};
+  const bodyScale = clampNumber(body.scale, 0.5, 2, 1);
+  const bodyOffsetX = Math.round(clampNumber(body.offsetX, -540, 540, 0));
+  const bodyOffsetY = Math.round(clampNumber(body.offsetY, -960, 960, 0));
+  const bodyWidth = Math.round(clampNumber(body.width, 40, 120, 100));
+  const bodyWrapStyle =
+    "width:" + bodyWidth + "%;transform:translate(" + bodyOffsetX + "px," + bodyOffsetY + "px) scale(" + bodyScale + ");transform-origin:center top;";
   const photoUrl = previewPhotoUrl(scene);
   const photo = photoUrl
     ? '<div style="position:absolute;left:' + photoBox.left + "px;top:" + photoBox.top + "px;width:" + photoBox.width + "px;height:" + photoBox.height + 'px;overflow:hidden;background:' + pal.bgSoft + '">' +
@@ -2295,7 +2611,6 @@ function previewSceneHtml(scene, styleOverride) {
     : '<div style="position:absolute;inset:0;background:linear-gradient(155deg,' + pal.bgSoft + "," + pal.bg + ')"></div>';
   const topScrim = '<div style="position:absolute;inset:0;z-index:2;background:linear-gradient(180deg,' + pal.bg + 'E6 0%,' + pal.bg + 'A8 22%,' + pal.bg + '33 38%,' + pal.bg + '00 52%)"></div>';
   const bottomScrim = '<div style="position:absolute;inset:0;z-index:3;background:linear-gradient(180deg,' + pal.bg + '00 0%,' + pal.bg + '00 38%,' + pal.bg + '33 52%,' + pal.bg + 'AA 68%,' + pal.bg + 'E6 84%,' + pal.bg + 'F2 100%)"></div>';
-  const contentScrim = '<div style="position:absolute;left:' + Math.max(0, contentLeft - 28) + "px;right:" + Math.max(0, PREVIEW_W - contentLeft - contentWidth - 28) + "px;top:" + Math.max(0, contentTop - 150) + 'px;height:430px;z-index:4;background:linear-gradient(180deg,' + pal.bg + '00 0%,' + pal.bg + '8C 24%,' + pal.bg + 'B8 62%,' + pal.bg + '00 100%);opacity:0.9"></div>';
   const look = previewLook();
   const kickerMark = previewMarker(look, pal.accent, 0);
   const kicker = '<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">' + kickerMark + '<div style="font-family:' + look.display + ";font-size:22px;letter-spacing:" + (look.track + 4) + "px;text-transform:" + (look.upper ? "uppercase" : "none") + ";color:" + pal.accent + ';font-weight:600">' + esc(scene?.kicker || scene?.barTitle || "") + '</div></div>';
@@ -2306,14 +2621,17 @@ function previewSceneHtml(scene, styleOverride) {
     '</div>',
   ).join("");
   return '<div style="position:absolute;inset:0;background:' + pal.bg + '">' +
-    photo + topScrim + bottomScrim + contentScrim +
+    photo + topScrim + bottomScrim +
     previewTitleBar(scene, pal) +
     previewMasthead(pal) +
     '<div style="position:absolute;left:' + contentLeft + "px;top:" + contentTop + "px;width:" + contentWidth + "px;z-index:10;display:flex;flex-direction:column;align-items:flex-start;text-align:" + style.contentAlign + '">' +
-      kicker +
-      '<div style="width:100%">' + bullets + '</div>' +
+      '<div style="' + bodyWrapStyle + 'display:flex;flex-direction:column;align-items:flex-start">' +
+        kicker +
+        '<div>' + bullets + '</div>' +
+      '</div>' +
     '</div>' +
     previewAvatar(layout) +
+    previewSubtitle(layout, scene) +
   '</div>';
 }
 
@@ -2355,9 +2673,26 @@ function refreshPreviewCanvas() {
   const stage = $("#mpStage");
   const scene = previewScene();
   if (!stage || !scene) return;
+  const prevVideo = stage.querySelector(".mp-canvas video");
+  const prevSrc = prevVideo ? prevVideo.getAttribute("src") || "" : "";
   const draft = state.previewDraft && state.previewDraft.sceneId === scene.id ? state.previewDraft.style : null;
   stage.innerHTML = previewCanvasMarkup(scene, draft);
   fitMaterialPreview();
+  const nextVideo = stage.querySelector(".mp-canvas video");
+  if (nextVideo && prevVideo && prevSrc && prevSrc === nextVideo.getAttribute("src")) {
+    prevVideo.style.cssText = nextVideo.style.cssText;
+    nextVideo.replaceWith(prevVideo);
+  }
+}
+
+let previewRefreshQueued = false;
+function schedulePreviewRefresh() {
+  if (previewRefreshQueued) return;
+  previewRefreshQueued = true;
+  window.requestAnimationFrame(() => {
+    previewRefreshQueued = false;
+    refreshPreviewCanvas();
+  });
 }
 
 function rememberPreviewScene(id) {
@@ -2513,7 +2848,11 @@ function renderMaterials() {
   if (sceneHost) {
     const scenes = state.motion?.scenes || [];
     const current = previewScene();
+    const rail = $("#sceneList");
+    const railCount = $("#sceneRailCount");
     if (!current) {
+      if (rail) rail.innerHTML = "";
+      if (railCount) railCount.textContent = "—";
       sceneHost.innerHTML = `<div class="material-empty">还没有分镜，更新分镜后会显示每一幕的排版预览。</div>`;
     } else {
       const material = current.photoSource === "material" && current.layout !== "closing";
@@ -2548,6 +2887,8 @@ function renderMaterials() {
           </button>`;
         })
         .join("");
+      if (rail) rail.innerHTML = items;
+      if (railCount) railCount.textContent = `${scenes.length} 幕`;
       sceneHost.innerHTML = `<div class="mp-stage-wrap">
           <div class="mp-stage" id="mpStage">${previewCanvasMarkup(current, draft)}</div>
           <div class="mp-meta">
@@ -2557,8 +2898,7 @@ function renderMaterials() {
           </div>
           <div class="mp-actions">${restore}${networkButton}${layoutButton}</div>
           ${picker}
-        </div>
-        <div class="mp-list" role="list">${items}</div>`;
+        </div>`;
       window.requestAnimationFrame(fitMaterialPreview);
     }
   }
@@ -2959,6 +3299,7 @@ async function saveAll(quiet = false, autoPrepare = true) {
       }),
     ]);
     if (saved?.ui) state.config.ui = { ...state.config.ui, ...saved.ui };
+    if (saved?.ui?.layout) state.motion = { ...state.motion, layout: saved.ui.layout };
     if (saved?.ai) state.config.ai = { ...state.config.ai, ...saved.ai };
     setDirty(false);
     if (!quiet) toast("配置与文案已保存", "ok");
@@ -3485,6 +3826,25 @@ function bind() {
 
   $("#scriptSaveBtn").addEventListener("click", () => saveAll());
 
+  $("#scriptPregenBtn").addEventListener("click", async () => {
+    if (state.runActive) {
+      toast("视频正在生成，结束后再预生成", "error");
+      return;
+    }
+    if (!state.script.trim()) {
+      toast("先写点文案再预生成", "error");
+      return;
+    }
+    if (state.prep?.state === "running") {
+      switchTab("style");
+      return;
+    }
+    const ok = await saveAll(true, false);
+    if (!ok) return;
+    switchTab("style");
+    await requestStoryboardPrep({ force: true, autoMotion: true, reason: "预生成" });
+  });
+
   $("#seriesTitle").addEventListener("input", (event) => {
     state.series.title = event.target.value;
     scheduleSeriesPreview();
@@ -3769,6 +4129,26 @@ function bind() {
     applyMotion(btn.dataset.recipe, state.motionCandidateMode === "scene" ? "scene" : state.motionScope);
   });
 
+  $("#promptDebug").addEventListener("click", openPromptDrawer);
+  $("#pxClose").addEventListener("click", closePromptDrawer);
+  $("#pxBackdrop").addEventListener("click", closePromptDrawer);
+  $("#pxRefresh").addEventListener("click", () => loadPromptDebug());
+  $("#pxTabs").addEventListener("click", (event) => {
+    const btn = event.target.closest("button[data-px]");
+    if (!btn) return;
+    promptUi.tab = btn.dataset.px;
+    renderPromptDrawer();
+  });
+  $("#pxScene").addEventListener("change", (event) => {
+    promptUi.scene = Math.max(0, Number(event.target.value) || 0);
+    loadPromptDebug(promptUi.scene);
+  });
+  $("#pxCopy").addEventListener("click", copyPromptText);
+  $("#pxDownload").addEventListener("click", downloadPromptText);
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && promptUi.open) closePromptDrawer();
+  });
+
   const setAvatarNumber = (key, value, scale = 100) => {
     uiLayout().avatar[key] = clampNumber(value / scale, 0, 1, uiLayout().avatar[key]);
     syncLayoutControls();
@@ -3809,6 +4189,55 @@ function bind() {
   });
   $("#avoidInput").addEventListener("change", (event) => {
     uiLayout().avoid = event.target.checked;
+    syncLayoutControls();
+    markDirty();
+  });
+  $("#bodyScale").addEventListener("input", (event) => {
+    uiLayout().body.scale = Math.round(clampNumber(event.target.value, 50, 200, 100)) / 100;
+    syncLayoutControls();
+    markDirty();
+  });
+  $("#bodyOffsetY").addEventListener("input", (event) => {
+    uiLayout().body.offsetY = Math.round(clampNumber(event.target.value, -960, 960, 0));
+    syncLayoutControls();
+    markDirty();
+  });
+  $("#bodyOffsetX").addEventListener("input", (event) => {
+    uiLayout().body.offsetX = Math.round(clampNumber(event.target.value, -540, 540, 0));
+    syncLayoutControls();
+    markDirty();
+  });
+  $("#bodyWidth").addEventListener("input", (event) => {
+    uiLayout().body.width = Math.round(clampNumber(event.target.value, 40, 120, 100));
+    syncLayoutControls();
+    markDirty();
+  });
+  $("#subtitlePlacement").addEventListener("change", (event) => {
+    uiLayout().subtitle.placement = ["auto", "bottom", "middle", "top"].includes(event.target.value)
+      ? event.target.value
+      : "auto";
+    syncLayoutControls();
+    markDirty();
+  });
+  $("#subtitleAlign").addEventListener("change", (event) => {
+    uiLayout().subtitle.align = ["left", "center", "right"].includes(event.target.value)
+      ? event.target.value
+      : "center";
+    syncLayoutControls();
+    markDirty();
+  });
+  $("#subtitleOffsetX").addEventListener("input", (event) => {
+    uiLayout().subtitle.offsetX = Math.round(clampNumber(event.target.value, -300, 300, 0));
+    syncLayoutControls();
+    markDirty();
+  });
+  $("#subtitleOffsetY").addEventListener("input", (event) => {
+    uiLayout().subtitle.offsetY = Math.round(clampNumber(event.target.value, -360, 360, 0));
+    syncLayoutControls();
+    markDirty();
+  });
+  $("#subtitleFontSize").addEventListener("input", (event) => {
+    uiLayout().subtitle.fontSize = Math.round(clampNumber(event.target.value, 34, 80, 54));
     syncLayoutControls();
     markDirty();
   });
@@ -3894,7 +4323,7 @@ function bind() {
     deleteMaterial(btn.dataset.materialDelete);
   });
 
-  $("#materialSceneMap").addEventListener("click", (event) => {
+  const onScenePreviewClick = (event) => {
     const pickBtn = event.target.closest("[data-network-pick]");
     if (pickBtn) {
       openNetworkPicker(pickBtn.dataset.networkPick);
@@ -3942,7 +4371,9 @@ function bind() {
     const btn = event.target.closest("[data-scene-photo]");
     if (!btn) return;
     restoreSceneNetwork(btn.dataset.scenePhoto, btn.dataset.photoSource || "network");
-  });
+  };
+  $("#materialSceneMap").addEventListener("click", onScenePreviewClick);
+  $("#sceneList").addEventListener("click", onScenePreviewClick);
 
   $("#materialSceneMap").addEventListener("submit", (event) => {
     const form = event.target.closest("[data-network-form]");

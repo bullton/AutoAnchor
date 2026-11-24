@@ -63,6 +63,9 @@ results/20261122-153000/
 | `--no-run` | 只保存 Notebook 版本，不实际跑 |
 | `--no-wait` | 推送后立即返回 |
 | `--timeout` | 等待分钟数，默认 120 |
+| `--queue-timeout-min` | 排队超过多少分钟就取消并重新排队，默认 3；0 表示一直等 |
+| `--queue-retries` | 排队超时后最多重新排队几次，默认 3 |
+| `--queue-retry-delay` | 取消后等待多少秒再重新推送，默认 20 |
 | `--force-upload` | 素材没变也重新上传数据集 |
 
 素材内容没变时不会重复上传数据集，直接复用，省掉每次上百 MB 的上传时间。
@@ -103,7 +106,7 @@ results/20261122-153000/
 - **输出时长按音频切块**：LatentSync 按 Whisper 音频特征切块，成片时长约等于音频长度，尾部多余视频帧会被丢弃，属正常行为。
 - **Python 版本**：Kaggle 镜像是 Python 3.13，官方依赖钉 3.10（mediapipe、opencv、numpy 1.26 都没有 3.13 wheel）。Notebook 用 `uv` 建独立 3.10 环境。
 - **fp16**：官方 `inference.py` 在 compute capability ≤ 7 时强制 fp32，T4（7.5）会被降级，Notebook 改成 `>= 7`。
-- **排队**：推送时显式带 `--accelerator NvidiaTeslaT4`，否则可能落到默认池长时间排队。报 `Maximum batch GPU session count of 2 reached` 说明有旧会话占位，删掉旧 kernel 版本再推。
+- **排队**：推送时显式带 `--accelerator NvidiaTeslaT4`，否则可能落到默认池长时间排队。排队超过 `--queue-timeout-min`（默认 3 分钟）会自动取消当前版本并重新排队，最多 `--queue-retries` 次（默认 3）。报 `Maximum batch GPU session count of 2 reached` 说明有旧会话占位，删掉旧 kernel 版本再推。
 - **不是服务器**：单次会话上限约 12 小时，每周约 30 小时，政策禁止 server farming。Notebook 最后一格支持 `ENABLE_GRADIO_TUNNEL=1` 起 Gradio + cloudflared 临时隧道。
 - **画质**：人脸占画面比例越小，嘴部越软；头肩/半身近景效果更好。
 

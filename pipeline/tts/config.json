@@ -24,6 +24,9 @@
     "durationFactor": 1,
     "timeoutSec": 7200,
     "pollIntervalSec": 20,
+    "queueTimeoutSec": 180,
+    "queueRetries": 3,
+    "queueRetryDelaySec": 20,
     "fallbackToEdge": false,
     "python": "",
     "kaggleBin": ""

@@ -315,8 +315,45 @@ function prepareLayout() {
 const layoutProps = prepareLayout();
 
 function subtitlePlacement() {
-  const base = { alignment: 2, marginL: 80, marginR: 80, marginV: 240, maxChars: 15, fontSize: 54 };
-  if (layoutProps.mode === "none" || !layoutProps.avoid) return base;
+  const s = layoutProps.subtitle || {};
+  const placement = ["auto", "top", "middle", "bottom"].includes(s.placement) ? s.placement : "auto";
+  const align = ["left", "center", "right"].includes(s.align) ? s.align : "center";
+  const offsetX = Math.round(Number(s.offsetX) || 0);
+  const offsetY = Math.round(Number(s.offsetY) || 0);
+  const fontSize = Math.round(Math.min(80, Math.max(34, Number(s.fontSize) || 54)));
+  const custom = placement !== "auto" || align !== "center" || offsetX !== 0 || offsetY !== 0 || fontSize !== 54;
+  const base = { alignment: 2, marginL: 80, marginR: 80, marginV: 240, maxChars: 15, fontSize };
+  const anchors = {
+    left: { top: 7, middle: 4, bottom: 1 },
+    center: { top: 8, middle: 5, bottom: 2 },
+    right: { top: 9, middle: 6, bottom: 3 },
+  };
+  const bandX = () =>
+    align === "left" ? 80 + offsetX : align === "right" ? video.width - 80 + offsetX : Math.round(video.width / 2 + offsetX);
+  const safeY = (value) => Math.round(Math.min(video.height - 120, Math.max(120, value)));
+
+  if (placement !== "auto") {
+    const baseY = placement === "top" ? 300 : placement === "middle" ? video.height / 2 : video.height - 270;
+    return {
+      alignment: anchors[align][placement],
+      marginL: 80,
+      marginR: 80,
+      marginV: 0,
+      maxChars: base.maxChars,
+      fontSize,
+      pos: { x: bandX(), y: safeY(baseY + offsetY) },
+    };
+  }
+
+  if (layoutProps.mode === "none" || !layoutProps.avoid) {
+    if (!custom) return base;
+    return {
+      ...base,
+      alignment: anchors[align].bottom,
+      pos: { x: bandX(), y: safeY(video.height - base.marginV + offsetY) },
+    };
+  }
+
   const a = layoutProps.avatar;
   const gap = Math.max(0, Number(layoutProps.gap) || 0);
   const width = Math.min(video.width, Math.max(120, a.width * video.width));
@@ -326,18 +363,20 @@ function subtitlePlacement() {
   const left = cx - width / 2;
   const right = cx + width / 2;
   const top = Math.max(0, cy - height / 2);
-  const bottom = Math.min(video.height, cy + height / 2);
   const centered = Math.abs(a.x - 0.5) < 0.09;
   if (centered) {
+    const marginV = Math.round(Math.max(240, Math.min(video.height * 0.62, video.height - top + gap)));
+    if (!custom) return { ...base, marginV };
     return {
       ...base,
-      marginV: Math.round(Math.max(240, Math.min(video.height * 0.62, video.height - top + gap))),
+      alignment: anchors[align].bottom,
+      pos: { x: bandX(), y: safeY(video.height - marginV + offsetY) },
     };
   }
   const pad = 40;
   const edge = a.x > 0.5 ? left : video.width - right;
   const avail = Math.max(320, edge - pad * 2);
-  return {
+  const side = {
     alignment: 5,
     marginL: 0,
     marginR: 0,
@@ -345,6 +384,17 @@ function subtitlePlacement() {
     maxChars: Math.max(10, Math.min(15, Math.floor(avail / 41))),
     fontSize: 42,
     pos: { x: Math.round(edge / 2) + 9, y: Math.round(cy) },
+  };
+  if (!custom) return side;
+  return {
+    ...side,
+    alignment: anchors[align].middle,
+    fontSize: fontSize === 54 ? side.fontSize : fontSize,
+    maxChars: Math.max(8, Math.floor(avail / Math.max(24, fontSize * 0.78))),
+    pos: {
+      x: Math.round(edge / 2) + 9 + offsetX,
+      y: safeY(cy + offsetY),
+    },
   };
 }
 
@@ -541,7 +591,7 @@ for (let i = 1; i < captionCues.length; i += 1) {
 
 captionCues.forEach((cue, i) => {
   const text = wrap(cue.text, 16);
-  const posTag = subtitle.pos ? `{\\an5\\pos(${subtitle.pos.x},${subtitle.pos.y})}` : "";
+  const posTag = subtitle.pos ? `{\\an${subtitle.alignment}\\pos(${subtitle.pos.x},${subtitle.pos.y})}` : "";
   assLines.push(
     `Dialogue: 0,${assTime(cue.start)},${assTime(cue.end)},Default,,0,0,0,,${posTag}${text}`,
   );

@@ -52,6 +52,8 @@ const EMPTY = {
     kernel: "latentsync-dual",
     accelerator: "NvidiaTeslaT4",
     timeoutMin: 120,
+    queueTimeoutMin: 3,
+    queueRetries: 3,
   },
   ai: {
     enabled: false,

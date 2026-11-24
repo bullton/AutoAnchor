@@ -21,6 +21,8 @@ import {
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const PIPELINE_ROOT = process.env.OD_PIPELINE_ROOT ? path.resolve(process.env.OD_PIPELINE_ROOT) : HERE;
 const motionLib = await import(pathToFileURL(path.join(PIPELINE_ROOT, "pipeline", "motion.mjs")).href);
+const aiLib = await import(pathToFileURL(path.join(PIPELINE_ROOT, "pipeline", "ai.mjs")).href);
+const promptLib = await import(pathToFileURL(path.join(PIPELINE_ROOT, "pipeline", "prompts.mjs")).href);
 const HOST = process.env.OD_UI_HOST || "127.0.0.1";
 const PORT = Number(process.env.OD_UI_PORT || 4310);
 
@@ -65,6 +67,8 @@ const AVATAR_FITS = new Set(["contain", "cover"]);
 const DH_VARIANTS = new Set(["closeup", "fullbody", "auto"]);
 const DH_VIDEO_EXTS = new Set([".mp4", ".mov", ".mkv", ".webm", ".m4v", ".avi"]);
 const AVATAR_MOTIONS = new Set(["none", "float", "breathe"]);
+const SUBTITLE_PLACEMENTS = new Set(["auto", "top", "middle", "bottom"]);
+const SUBTITLE_ALIGNS = new Set(["left", "center", "right"]);
 
 const clampNum = (value, min, max, fallback) => {
   const n = Number(value);
@@ -76,6 +80,8 @@ function normalizeLayoutConfig(raw = {}) {
   const legacyBottom = raw.layout === "avatar-bottom";
   const mode = LAYOUT_MODES.has(raw.mode) ? raw.mode : legacyBottom ? "video" : "none";
   const a = raw.avatar && typeof raw.avatar === "object" ? raw.avatar : {};
+  const b = raw.body && typeof raw.body === "object" ? raw.body : {};
+  const s = raw.subtitle && typeof raw.subtitle === "object" ? raw.subtitle : {};
   const width = clampNum(a.width, 0.1, 1, legacyBottom ? 0.62 : 0.34);
   return {
     mode,
@@ -94,6 +100,19 @@ function normalizeLayoutConfig(raw = {}) {
     },
     avoid: raw.avoid !== false,
     gap: clampNum(raw.gap, 0, 160, 24),
+    body: {
+      scale: Math.round(clampNum(b.scale, 0.5, 2, 1) * 100) / 100,
+      offsetX: Math.round(clampNum(b.offsetX, -540, 540, 0)),
+      offsetY: Math.round(clampNum(b.offsetY, -960, 960, 0)),
+      width: Math.round(clampNum(b.width, 40, 120, 100)),
+    },
+    subtitle: {
+      placement: SUBTITLE_PLACEMENTS.has(s.placement) ? s.placement : "auto",
+      align: SUBTITLE_ALIGNS.has(s.align) ? s.align : "center",
+      offsetX: Math.round(clampNum(s.offsetX, -300, 300, 0)),
+      offsetY: Math.round(clampNum(s.offsetY, -360, 360, 0)),
+      fontSize: Math.round(clampNum(s.fontSize, 34, 80, 54)),
+    },
   };
 }
 
@@ -707,20 +726,28 @@ function resetMotion(body = {}) {
   return motionState();
 }
 
-function sceneDigest(scenes) {
-  return scenes.map((scene, index) => ({
-    index,
-    title: scene.title || scene.barTitle || "",
-    barTitle: scene.barTitle || "",
-    layout: scene.layout || "band",
-    mood: scene.mood || "",
-    number: scene.number || "",
-    unit: scene.unit || "",
-    bullets: Array.isArray(scene.bullets) ? scene.bullets.filter((item) => typeof item === "string").slice(0, 4) : [],
-    speech: String(
-      Array.isArray(scene.speech) ? scene.speech.join(" ") : scene.speech || (scene.lines || []).join(" ") || "",
-    ).slice(0, 200),
-  }));
+function sceneDigest(scenes, extras = []) {
+  const byId = new Map(
+    (Array.isArray(extras) ? extras : []).map((item) => [String(item?.id || ""), item]),
+  );
+  return scenes.map((scene, index) => {
+    const extra = byId.get(String(scene.id || "")) || (Array.isArray(extras) ? extras[index] : null) || {};
+    return {
+      index,
+      title: scene.title || scene.barTitle || "",
+      barTitle: scene.barTitle || "",
+      layout: scene.layout || "band",
+      mood: scene.mood || "",
+      number: scene.number || "",
+      unit: scene.unit || "",
+      materialName: scene.materialName || extra.materialName || "",
+      photoSource: scene.photoSource || extra.photoSource || "",
+      bullets: Array.isArray(scene.bullets) ? scene.bullets.filter((item) => typeof item === "string").slice(0, 4) : [],
+      speech: String(
+        Array.isArray(scene.speech) ? scene.speech.join(" ") : scene.speech || (scene.lines || []).join(" ") || "",
+      ).slice(0, 200),
+    };
+  });
 }
 
 async function autoMotionAction(body = {}) {
@@ -731,7 +758,7 @@ async function autoMotionAction(body = {}) {
   const config = motionLib.readMotion();
   if (status.sceneIdsChanged || status.planStale) config.locks = {};
   const hint = String(body.prompt || "").slice(0, 200);
-  const result = await motionLib.autoMotion({ scenes: sceneDigest(scenes), hint });
+  const result = await motionLib.autoMotion({ scenes: sceneDigest(scenes, sceneList()), hint });
   if (!result.ok) throw new Error(result.reason || "自动编排失败");
 
   const locks = config.locks || {};
@@ -794,7 +821,7 @@ async function regenerateSceneAction(body = {}) {
   if (!config.source) config.source = { scriptHash: status.currentHash, sceneIds: status.sceneIds, at: Date.now() };
   const recipeAt = (at) => (at >= 0 && at < scenes.length ? motionLib.resolveMotionForScene(config, at) : null);
   const result = await motionLib.generateSceneMotion({
-    scene: sceneDigest(scenes)[index],
+    scene: sceneDigest(scenes, sceneList())[index],
     sceneIndex: index,
     total: scenes.length,
     theme: config.auto?.theme || "",
@@ -1172,6 +1199,100 @@ function requireFreshStoryboard({ allowPlanStale = false } = {}) {
     throw new Error("分镜已更新，请先重新自动编排");
   }
   return status;
+}
+
+const SENTENCE_SPLIT = /(?<=[。！？!?；;])/;
+
+function scriptSentences() {
+  return String(loadScript() || "")
+    .replace(/\r/g, "")
+    .split(SENTENCE_SPLIT)
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+function promptDebugBundle(rawScene) {
+  const rules = promptLib.readPromptRules();
+  const status = storyboardStatus();
+  const props = readJson(PROPS_FILE, null);
+  const propsScenes = Array.isArray(props?.scenes) ? props.scenes : [];
+  const scenes = sceneList();
+  const cfg = aiLib.loadAiConfig();
+  const sentences = scriptSentences();
+  const total = scenes.length || propsScenes.length;
+  const index = total ? Math.min(total - 1, Math.max(0, Math.round(Number(rawScene) || 0))) : 0;
+  const digest = sceneDigest(propsScenes, scenes);
+  const motionConfig = motionLib.readMotion();
+  const at = (i) => (i >= 0 && i < total ? motionLib.resolveMotionForScene(motionConfig, i) : null);
+  const temperature = Math.min(0.85, Math.max(0.3, cfg.temperature ?? 0.55));
+
+  const storyboard = {
+    available: sentences.length > 0,
+    note: sentences.length ? "" : "还没有文案，写入文案后这里会实时更新",
+    system: promptLib.applyPromptRules(aiLib.PLAN_SYSTEM, "storyboard", rules),
+    user: sentences.length ? aiLib.buildPlanUserPrompt(sentences, cfg.extraPrompt) : "",
+    params: { model: cfg.model, temperature: cfg.temperature, maxTokens: cfg.maxTokens, timeoutMs: cfg.timeoutMs },
+  };
+
+  const motion = {
+    available: digest.length > 0,
+    note: digest.length ? "" : "还没有分镜，先生成一次分镜后再看动效 prompt",
+    system: promptLib.applyPromptRules(motionLib.AUTO_SYSTEM, "motion", rules),
+    user: digest.length ? motionLib.buildAutoUserPrompt(digest, "") : "",
+    params: { model: cfg.model, temperature, maxTokens: 2200 },
+  };
+
+  const scene = {
+    available: Boolean(digest[index]),
+    index,
+    total,
+    title: digest[index]?.title || "",
+    system: promptLib.applyPromptRules(motionLib.SCENE_SYSTEM, "motion", rules),
+    user: digest[index]
+      ? motionLib.buildSceneUserPrompt({
+          scene: digest[index],
+          sceneIndex: index,
+          total,
+          theme: motionConfig.auto?.theme || "",
+          current: at(index),
+          prev: at(index - 1),
+          next: at(index + 1),
+          hint: "",
+        })
+      : "",
+    params: { model: cfg.model, temperature, maxTokens: 1800 },
+  };
+
+  return {
+    generatedAt: Date.now(),
+    rules,
+    ai: {
+      enabled: Boolean(cfg.enabled),
+      model: cfg.model,
+      baseUrl: cfg.baseUrl,
+      temperature: cfg.temperature,
+      maxTokens: cfg.maxTokens,
+      timeoutMs: cfg.timeoutMs,
+      keyEnv: cfg.keyEnv,
+      hasKey: Boolean(aiLib.resolveApiKey(cfg)),
+    },
+    context: {
+      scriptHash: currentScriptHash(),
+      sentences: sentences.length,
+      scenes: total,
+      materials: listMaterials().items.length,
+      storyboard: { stale: status.stale, reason: status.reason, planStale: status.planStale },
+      sceneMaterials: scenes.map((item) => ({
+        index: item.index,
+        title: item.title,
+        material: item.materialName || "",
+        source: item.photoSource || "",
+      })),
+    },
+    storyboard,
+    motion,
+    scene,
+  };
 }
 
 let storyboardPrep = null;
@@ -2662,6 +2783,8 @@ function saveSetup(body = {}) {
       kernel: String(k.kernel ?? prev.kernel ?? "latentsync-dual").trim().slice(0, 80) || "latentsync-dual",
       accelerator: String(k.accelerator ?? prev.accelerator ?? "NvidiaTeslaT4").trim().slice(0, 60) || "NvidiaTeslaT4",
       timeoutMin: Math.round(clampNum(k.timeoutMin ?? prev.timeoutMin, 10, 360, 120)),
+      queueTimeoutMin: Math.round(clampNum(k.queueTimeoutMin ?? prev.queueTimeoutMin, 0, 60, 3)),
+      queueRetries: Math.round(clampNum(k.queueRetries ?? prev.queueRetries, 1, 10, 3)),
     };
     const key = String(k.key || "").trim();
     const token = String(k.token || "").trim();
@@ -2891,6 +3014,46 @@ const server = http.createServer(async (req, res) => {
       const body = await readBody(req);
       const saved = saveConfig(body);
       sendJson(res, 200, saved);
+      return;
+    }
+
+    if (pathname === "/api/ai" && req.method === "GET") {
+      sendJson(res, 200, maskAi(privateAi() || readJson(AI_CONFIG, {})));
+      return;
+    }
+
+    if (pathname === "/api/ai" && req.method === "POST") {
+      const body = await readBody(req);
+      try {
+        const prev = privateAi() || readJson(AI_CONFIG, {});
+        const nextKey = String(body?.apiKey || "").trim();
+        const ai = sanitizeAi({ ...prev, ...body, apiKey: nextKey || prev.apiKey || "" });
+        writePrivate({ ai, source: readPrivate().source || "manual" });
+        writeJson(AI_CONFIG, { ...ai, apiKey: "" });
+        sendJson(res, 200, maskAi(ai));
+      } catch (err) {
+        sendJson(res, 400, { error: err?.message || String(err) });
+      }
+      return;
+    }
+
+    if (pathname === "/api/prompts" && req.method === "GET") {
+      sendJson(res, 200, promptDebugBundle(url.searchParams.get("scene")));
+      return;
+    }
+
+    if (pathname === "/api/prompts/rules" && req.method === "GET") {
+      sendJson(res, 200, promptLib.readPromptRules());
+      return;
+    }
+
+    if (pathname === "/api/prompts/rules" && req.method === "POST") {
+      const body = await readBody(req);
+      try {
+        sendJson(res, 200, promptLib.writePromptRules(body));
+      } catch (err) {
+        sendJson(res, 400, { error: err?.message || String(err) });
+      }
       return;
     }
 
@@ -3662,10 +3825,15 @@ const server = http.createServer(async (req, res) => {
       "/index.html": "index.html",
       "/styles.css": "styles.css",
       "/app.js": "app.js",
+      "/title-break.js": "title-break.js",
       "/setup": "setup.html",
       "/setup.html": "setup.html",
       "/setup.js": "setup.js",
       "/setup.css": "setup.css",
+      "/admin": "admin.html",
+      "/admin.html": "admin.html",
+      "/admin.js": "admin.js",
+      "/admin.css": "admin.css",
       "/layout-review.html": "layout-review.html",
     };
     if (staticMap[pathname]) {

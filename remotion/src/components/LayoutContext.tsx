@@ -1,4 +1,4 @@
-import { createContext, useContext } from "react";
+import { createContext, useContext, type CSSProperties } from "react";
 
 export type AvatarMode = "none" | "image" | "video";
 export type AvatarShape = "rounded" | "circle" | "ellipse" | "square" | "diamond" | "hexagon";
@@ -24,9 +24,22 @@ export interface AvatarConfig {
   borderColor: string;
 }
 
+export interface BodyConfig {
+  /** 正文字号缩放比例 */
+  scale: number;
+  /** 正文水平偏移（画布 1080 宽下的像素） */
+  offsetX: number;
+  /** 正文垂直偏移（画布 1920 高下的像素） */
+  offsetY: number;
+  /** 正文宽度占文字区宽度的百分比 */
+  width: number;
+}
+
 export interface LayoutConfig {
   mode: AvatarMode;
   avatar: AvatarConfig;
+  /** 正文排版微调 */
+  body: BodyConfig;
   /** 文字、图片、字幕是否避让头像占位 */
   avoid: boolean;
   /** 避让间距（px） */
@@ -63,8 +76,26 @@ export const defaultLayout: LayoutConfig = {
   },
   avoid: true,
   gap: 24,
+  body: {
+    scale: 1,
+    offsetX: 0,
+    offsetY: 0,
+    width: 100,
+  },
 };
 
 export const LayoutContext = createContext<LayoutConfig>(defaultLayout);
 
 export const useLayout = () => useContext(LayoutContext);
+
+export const bodyWrapStyle = (body?: Partial<BodyConfig>): CSSProperties => {
+  const scale = Math.min(2, Math.max(0.5, Number(body?.scale) || 1));
+  const offsetX = Math.min(540, Math.max(-540, Number(body?.offsetX) || 0));
+  const offsetY = Math.min(960, Math.max(-960, Number(body?.offsetY) || 0));
+  const width = Math.min(120, Math.max(40, Number(body?.width) || 100));
+  return {
+    width: `${width}%`,
+    transform: `translate(${offsetX}px, ${offsetY}px) scale(${scale})`,
+    transformOrigin: "center top",
+  };
+};

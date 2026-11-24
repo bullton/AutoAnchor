@@ -1,9 +1,13 @@
 import React from "react";
-import { Easing, interpolate, staticFile, useCurrentFrame } from "remotion";
+import { Easing, interpolate, staticFile, useCurrentFrame, useVideoConfig } from "remotion";
 import { useStyle } from "../components/StyleContext";
+import { bodyWrapStyle, useLayout } from "../components/LayoutContext";
+import type { SceneData } from "../types";
 import { useSafeBox } from "./layoutBox";
 import { motionIntensity, motionSpeed, useSceneMotion } from "./sceneMotion";
-import { PHOTO_H, SAFE_BOTTOM, SIDE, TEXT_ANCHOR, TITLE_H, WIDTH, photoFillHeight } from "./tokens";
+import { sceneContentGeometry } from "./sceneContent";
+import { PHOTO_H, SAFE_BOTTOM, SIDE, TITLE_H, WIDTH, photoFillHeight } from "./tokens";
+import { splitTitleLines, textUnits } from "./titleBreak";
 
 const titleSize = (text: string): number => {
   const n = text.length;
@@ -144,8 +148,12 @@ export const TitleBar: React.FC<{ kicker: string; title: string; overlay?: boole
     easing: Easing.out(Easing.cubic),
   });
   const titleChars = Array.from(String(title || ""));
-  const perLine = Math.max(1, Math.ceil(titleChars.length / 2));
-  const titleSize = Math.max(34, Math.min(54, Math.floor((box.width - perLine * 1.2) / (perLine * 1.03))));
+  const titleLines = splitTitleLines(title || "");
+  const maxChars = Math.max(1, ...titleLines.map((line) => Array.from(line).length));
+  const maxUnits = Math.max(1, ...titleLines.map((line) => textUnits(line)));
+  const barTitleSize = titleChars.length
+    ? Math.max(34, Math.min(54, Math.floor((box.width - maxChars * 1.2) / (maxUnits * 1.03))))
+    : 54;
   return (
     <div
       style={{
@@ -186,7 +194,7 @@ export const TitleBar: React.FC<{ kicker: string; title: string; overlay?: boole
         <div
           style={{
             fontFamily: look.displayFont,
-            fontSize: titleSize,
+            fontSize: barTitleSize,
             lineHeight: 1.22,
             letterSpacing: look.titleTracking,
             fontWeight: look.titleWeight,
@@ -194,16 +202,20 @@ export const TitleBar: React.FC<{ kicker: string; title: string; overlay?: boole
             color: palette.ink,
             whiteSpace: "normal",
             overflow: "hidden",
-            display: "-webkit-box",
-            WebkitLineClamp: 2,
-            WebkitBoxOrient: "vertical",
+            display: "flex",
+            flexDirection: "column",
+            justifyContent: "center",
             maxWidth: box.width,
             width: "100%",
             textAlign: centered ? "center" : "left",
             textShadow: "0 3px 22px rgba(0,0,0,0.5)",
           }}
         >
-          {title}
+          {titleLines.map((line, index) => (
+            <div key={index} style={{ whiteSpace: "nowrap" }}>
+              {line}
+            </div>
+          ))}
         </div>
       </div>
     </div>
@@ -212,7 +224,7 @@ export const TitleBar: React.FC<{ kicker: string; title: string; overlay?: boole
 
 export const PhotoLayer: React.FC<{
   src?: string | null;
-  variant?: "band" | "hero" | "half";
+  variant?: "band" | "hero" | "half" | "backdrop";
   duration: number;
   focus?: string;
   dim?: number;
@@ -263,7 +275,11 @@ export const PhotoLayer: React.FC<{
       ? `linear-gradient(168deg, ${palette.bg}B8 0%, ${palette.bg}33 46%, ${palette.bg}D9 100%)`
       : variant === "band"
         ? `linear-gradient(180deg, ${palette.bg}00 0%, ${palette.bg}00 18%, ${palette.bg}38 34%, ${palette.bg}80 50%, ${palette.bg}B8 64%, ${palette.bg}D9 78%, ${palette.bg}E8 92%)`
-        : `linear-gradient(180deg, ${palette.bg}22 0%, ${palette.bg}2E 55%, ${palette.bg}E6 100%)`;
+        : variant === "backdrop"
+          ? "none"
+          : `linear-gradient(180deg, ${palette.bg}22 0%, ${palette.bg}2E 55%, ${palette.bg}E6 100%)`;
+  const topScrim = `linear-gradient(180deg, ${palette.bg}E6 0%, ${palette.bg}A8 22%, ${palette.bg}33 38%, ${palette.bg}00 52%)`;
+  const bottomScrim = `linear-gradient(180deg, ${palette.bg}00 0%, ${palette.bg}00 38%, ${palette.bg}33 52%, ${palette.bg}AA 68%, ${palette.bg}E6 84%, ${palette.bg}F2 100%)`;
 
   return (
     <div style={{ ...box, overflow: "hidden", opacity: appear }}>
@@ -331,18 +347,27 @@ export const PhotoLayer: React.FC<{
           ) : null}
         </>
       )}
-      <div style={{ position: "absolute", inset: 0, background: overlay }} />
-      {dim > 0 ? (
-        <div style={{ position: "absolute", inset: 0, background: palette.bg, opacity: Math.min(0.18, dim * 0.4) }} />
-      ) : null}
-      <div
-        style={{
-          position: "absolute",
-          inset: 0,
-          background: `linear-gradient(200deg, ${palette.accent}12 0%, transparent 45%)`,
-          mixBlendMode: "soft-light",
-        }}
-      />
+      {variant === "backdrop" ? (
+        <>
+          <div style={{ position: "absolute", inset: 0, background: topScrim }} />
+          <div style={{ position: "absolute", inset: 0, background: bottomScrim }} />
+        </>
+      ) : (
+        <>
+          <div style={{ position: "absolute", inset: 0, background: overlay }} />
+          {dim > 0 ? (
+            <div style={{ position: "absolute", inset: 0, background: palette.bg, opacity: Math.min(0.18, dim * 0.4) }} />
+          ) : null}
+          <div
+            style={{
+              position: "absolute",
+              inset: 0,
+              background: `linear-gradient(200deg, ${palette.accent}12 0%, transparent 45%)`,
+              mixBlendMode: "soft-light",
+            }}
+          />
+        </>
+      )}
     </div>
   );
 };
@@ -626,28 +651,57 @@ export const Credit: React.FC<{ text: string; appear: number }> = ({ text, appea
   );
 };
 
-export const Body: React.FC<{ children: React.ReactNode; style?: React.CSSProperties }> = ({
+export const Body: React.FC<{ scene: SceneData; children: React.ReactNode; style?: React.CSSProperties }> = ({
+  scene,
   children,
   style,
 }) => {
   const box = useSafeBox();
+  const layout = useLayout();
+  const { palette } = useStyle();
+  const { height } = useVideoConfig();
+  const geometry = sceneContentGeometry(scene, box, height);
   return (
     <div
       style={{
         position: "absolute",
-        left: box.left,
-        right: box.right,
-        top: Math.max(TEXT_ANCHOR, box.top),
-        bottom: Math.max(box.contentBottom, box.bottom),
+        left: geometry.contentLeft,
+        top: geometry.contentTop,
+        width: geometry.contentWidth,
+        zIndex: 10,
         display: "flex",
         flexDirection: "column",
-        justifyContent: "center",
-        alignItems: "center",
-        padding: "26px 0 0",
+        alignItems: "flex-start",
+        textAlign: geometry.contentAlign,
         ...style,
       }}
     >
-      {children}
+      <div
+        style={{
+          ...bodyWrapStyle(layout.body),
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "flex-start",
+        }}
+      >
+        {scene.kicker ? (
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
+            <Marker active />
+            <div
+              style={{
+                fontSize: 22,
+                letterSpacing: 4,
+                color: palette.accent,
+                fontWeight: 600,
+                textShadow: "0 2px 10px rgba(0,0,0,0.65)",
+              }}
+            >
+              {scene.kicker}
+            </div>
+          </div>
+        ) : null}
+        {children}
+      </div>
     </div>
   );
 };

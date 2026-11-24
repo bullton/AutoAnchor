@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>口播工坊 · 流水线控制台</title>
   <link rel="stylesheet" href="styles.css" />
+  <script src="title-break.js" defer></script>
   <script src="app.js" defer></script>
 </head>
 <body>
@@ -29,6 +30,7 @@
 
     <div class="top-actions">
       <a class="btn ghost" href="/setup">环境设置</a>
+      <a class="btn ghost" href="/admin">后台配置</a>
       <span class="save-state" id="saveState">已保存</span>
       <button class="btn ghost" id="saveBtn" type="button">保存配置</button>
       <button class="btn primary" id="runBtn" type="button">
@@ -180,7 +182,10 @@
             <textarea id="scriptInput" spellcheck="false" placeholder="把文案粘贴到这里，一行一句……"></textarea>
             <div class="editor-foot">
               <span class="muted">建议每句 20–40 字，句内保留逗号。</span>
-              <button class="btn small" id="scriptSaveBtn" type="button">保存文案</button>
+              <span class="editor-actions">
+                <button class="btn small" id="scriptPregenBtn" type="button">预生成</button>
+                <button class="btn small" id="scriptSaveBtn" type="button">保存文案</button>
+              </span>
             </div>
           </div>
 
@@ -327,234 +332,308 @@
 
         <div class="style-grid" id="styleGrid"></div>
 
-        <div class="card material-card">
-          <div class="card-head"><span>素材与章节</span><span class="card-head-tools"><span class="mini-tag" id="materialSummary">0 张 · 0 章</span><a class="btn tiny ghost" href="/layout-review.html" target="_blank" rel="noopener">排版审阅</a></span></div>
-          <div class="material-toolbar">
-            <label class="btn small file-btn">
-              ＋ 上传图片
-              <input type="file" id="materialFiles" accept="image/png,image/jpeg,image/webp" multiple hidden />
-            </label>
-            <button id="materialRedetect" class="btn tiny ghost" type="button">按文件名重新分章</button>
-            <span class="muted small">文件名示例：冷气篇_01.jpg、02-冷气篇.jpg；也可以直接把素材拖进章节</span>
-          </div>
-          <div class="material-chapters" id="materialChapters"></div>
-          <div class="material-scene-head">
-            <span>分镜预览 <span class="mini-tag">兼风格预览</span></span>
-            <span class="muted small" id="materialSceneHint">点右侧分镜切换；风格、配图与布局调整都会即时反映在预览里</span>
-          </div>
-          <div class="material-preview" id="materialSceneMap"></div>
-          <div class="scene-layout-editor hidden" id="sceneLayoutEditor"></div>
-        </div>
-
-        <div class="style-layout">
-          <div class="card">
-            <div class="card-head"><span>动效强度</span></div>
-            <div class="segmented" id="motionSeg">
-              <button data-motion="light" type="button">轻</button>
-              <button data-motion="standard" class="active" type="button">标准</button>
-              <button data-motion="strong" type="button">强</button>
+        <div class="style-workbench">
+          <aside class="style-stage-col">
+            <div class="card stage-card">
+              <div class="card-head"><span>分镜预览</span><span class="card-head-tools"><span class="mini-tag">拖动滑杆即时预览</span></span></div>
+              <div class="material-preview" id="materialSceneMap"></div>
             </div>
-            <div class="muted small motion-note" id="motionNote">位移与弹性适中，适合大多数口播。</div>
-          </div>
+          </aside>
 
-          <div class="card layout-card">
-            <div class="card-head"><span>画面布局</span><span class="mini-tag" id="layoutModeTag">纯文案</span></div>
-            <div class="segmented" id="modeSeg">
-              <button data-mode="none" class="active" type="button">纯文案</button>
-              <button data-mode="image" type="button">动画+头像</button>
-              <button data-mode="video" type="button">动画+数字人</button>
+          <div class="style-controls">
+            <div class="card scene-rail-card">
+              <div class="scene-rail-head"><span class="muted small">分镜切换</span><span class="mini-tag" id="sceneRailCount">—</span></div>
+              <div class="mp-list" id="sceneList" role="list"></div>
             </div>
-            <div class="dh-block">
-              <label class="switch-row compact">
-                <input type="checkbox" id="dhEnabled" />
+
+            <div class="scene-layout-editor hidden" id="sceneLayoutEditor"></div>
+
+            <div class="card layout-card">
+              <div class="card-head"><span>画面布局</span><span class="mini-tag" id="layoutModeTag">纯文案</span></div>
+              <div class="segmented" id="modeSeg">
+                <button data-mode="none" class="active" type="button">纯文案</button>
+                <button data-mode="image" type="button">动画+头像</button>
+                <button data-mode="video" type="button">动画+数字人</button>
+              </div>
+              <div class="dh-block">
+                <label class="switch-row compact">
+                  <input type="checkbox" id="dhEnabled" />
+                  <span class="switch"></span>
+                  <span>
+                    <b>Kaggle 生成口型数字人</b>
+                    <small>配音完成后，用上方“数字人参考”视频生成对口型片段，再自动进入动画与成片。</small>
+                  </span>
+                </label>
+                <div class="two-fields dh-fields" id="dhFields">
+                  <div class="field">
+                    <label for="dhVariant">数字人版本</label>
+                    <select id="dhVariant">
+                      <option value="closeup">半身近景</option>
+                      <option value="fullbody">全身</option>
+                      <option value="auto">自动选择</option>
+                    </select>
+                  </div>
+                  <div class="field">
+                    <label for="dhTimeout">等待上限</label>
+                    <select id="dhTimeout">
+                      <option value="60">60 分钟</option>
+                      <option value="120">120 分钟</option>
+                      <option value="180">180 分钟</option>
+                    </select>
+                  </div>
+                </div>
+                <p class="io-hint" id="dhHint">选择视频素材后可开启。首次运行需在 Kaggle 完成依赖安装，约 40–55 分钟。</p>
+              </div>
+              <div id="avatarFields" class="avatar-fields hidden">
+                <div class="avatar-source">
+                  <label class="avatar-upload" for="avatarFile">
+                    <input type="file" id="avatarFile" accept="image/png,image/jpeg,image/webp,video/mp4,video/webm,video/quicktime" hidden />
+                    <span>＋ 上传素材</span>
+                  </label>
+                  <select id="avatarSelect"><option value="">选择已有素材</option></select>
+                </div>
+                <div class="range-field">
+                  <div class="range-head"><label for="avatarWidth">头像占比</label><b id="avatarWidthValue">34%</b></div>
+                  <input type="range" id="avatarWidth" min="12" max="70" step="1" value="34" />
+                </div>
+                <div class="avatar-grid-row">
+                  <div class="anchor-grid" id="anchorGrid">
+                    <button data-x="0.18" data-y="0.2" type="button" aria-label="左上"></button>
+                    <button data-x="0.5" data-y="0.2" type="button" aria-label="上"></button>
+                    <button data-x="0.82" data-y="0.2" type="button" aria-label="右上"></button>
+                    <button data-x="0.18" data-y="0.5" type="button" aria-label="左"></button>
+                    <button data-x="0.5" data-y="0.5" type="button" aria-label="中"></button>
+                    <button data-x="0.82" data-y="0.5" type="button" aria-label="右"></button>
+                    <button data-x="0.18" data-y="0.78" type="button" aria-label="左下"></button>
+                    <button data-x="0.5" data-y="0.78" type="button" aria-label="下"></button>
+                    <button data-x="0.82" data-y="0.78" type="button" aria-label="右下"></button>
+                  </div>
+                  <div class="anchor-fields">
+                    <div class="range-field compact">
+                      <div class="range-head"><label for="avatarX">水平</label><b id="avatarXValue">50%</b></div>
+                      <input type="range" id="avatarX" min="0" max="100" step="1" value="50" />
+                    </div>
+                    <div class="range-field compact">
+                      <div class="range-head"><label for="avatarY">垂直</label><b id="avatarYValue">76%</b></div>
+                      <input type="range" id="avatarY" min="0" max="100" step="1" value="76" />
+                    </div>
+                    <div class="range-field compact">
+                      <div class="range-head"><label for="avatarGap">避让间距</label><b id="avatarGapValue">24px</b></div>
+                      <input type="range" id="avatarGap" min="0" max="80" step="4" value="24" />
+                    </div>
+                  </div>
+                </div>
+                <div class="two-fields">
+                  <div class="field">
+                    <label for="avatarShape">裁切形状</label>
+                    <select id="avatarShape">
+                      <option value="rounded">圆角</option>
+                      <option value="circle">圆形</option>
+                      <option value="ellipse">椭圆</option>
+                      <option value="square">方形</option>
+                      <option value="diamond">菱形</option>
+                      <option value="hexagon">六边形</option>
+                    </select>
+                  </div>
+                  <div class="field">
+                    <label for="avatarMotion">动效</label>
+                    <select id="avatarMotion">
+                      <option value="float">轻微浮动</option>
+                      <option value="breathe">呼吸缩放</option>
+                      <option value="none">静止</option>
+                    </select>
+                  </div>
+                </div>
+                <div class="two-fields border-fields">
+                  <div class="range-field compact">
+                    <div class="range-head"><label for="borderWidth">描边粗细</label><b id="borderWidthValue">4px</b></div>
+                    <input type="range" id="borderWidth" min="0" max="24" step="1" value="4" />
+                  </div>
+                  <div class="field">
+                    <label for="borderColor">描边颜色</label>
+                    <div class="color-field">
+                      <input type="color" id="borderColor" value="#e8a33d" />
+                      <span id="borderColorValue">#E8A33D</span>
+                    </div>
+                  </div>
+                </div>
+                <label class="check inline-check"><input type="checkbox" id="frameInput" checked />头像投影</label>
+                <label class="check inline-check"><input type="checkbox" id="avoidInput" checked />文字与字幕自动避让头像</label>
+              </div>
+              <div class="layout-params">
+                <div class="subtitle-block">
+                  <div class="preset-head">
+                    <span class="muted small">正文排版</span>
+                    <b class="mini-tag" id="bodyScaleTag">100%</b>
+                  </div>
+                  <div class="range-field compact">
+                    <div class="range-head"><label for="bodyScale">正文与章节号</label><b id="bodyScaleValue">100%</b></div>
+                    <input type="range" id="bodyScale" min="50" max="200" step="5" value="100" />
+                  </div>
+                  <div class="range-field compact">
+                    <div class="range-head"><label for="bodyOffsetY">正文上下</label><b id="bodyOffsetYValue">0px</b></div>
+                    <input type="range" id="bodyOffsetY" min="-960" max="960" step="10" value="0" />
+                  </div>
+                  <div class="range-field compact">
+                    <div class="range-head"><label for="bodyOffsetX">正文左右</label><b id="bodyOffsetXValue">0px</b></div>
+                    <input type="range" id="bodyOffsetX" min="-540" max="540" step="20" value="0" />
+                  </div>
+                  <div class="range-field compact">
+                    <div class="range-head"><label for="bodyWidth">正文宽度</label><b id="bodyWidthValue">100%</b></div>
+                    <input type="range" id="bodyWidth" min="40" max="120" step="5" value="100" />
+                  </div>
+                  <p class="io-hint">正文与章节号会一并缩放、移动；范围已覆盖整个正文区域，并同步到预览与成片渲染。</p>
+                </div>
+                <div class="subtitle-block">
+                  <div class="preset-head">
+                    <span class="muted small">字幕位置</span>
+                    <b class="mini-tag" id="subtitlePlacementTag">自动避让</b>
+                  </div>
+                  <div class="two-fields">
+                    <div class="field">
+                      <label for="subtitlePlacement">垂直位置</label>
+                      <select id="subtitlePlacement">
+                        <option value="auto">自动避让</option>
+                        <option value="bottom">底部</option>
+                        <option value="middle">居中</option>
+                        <option value="top">顶部</option>
+                      </select>
+                    </div>
+                    <div class="field">
+                      <label for="subtitleAlign">对齐方式</label>
+                      <select id="subtitleAlign">
+                        <option value="center">居中</option>
+                        <option value="left">左对齐</option>
+                        <option value="right">右对齐</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div class="range-field compact">
+                    <div class="range-head"><label for="subtitleOffsetY">上下微调</label><b id="subtitleOffsetYValue">0px</b></div>
+                    <input type="range" id="subtitleOffsetY" min="-360" max="360" step="4" value="0" />
+                  </div>
+                  <div class="range-field compact">
+                    <div class="range-head"><label for="subtitleOffsetX">左右微调</label><b id="subtitleOffsetXValue">0px</b></div>
+                    <input type="range" id="subtitleOffsetX" min="-300" max="300" step="4" value="0" />
+                  </div>
+                  <div class="range-field compact">
+                    <div class="range-head"><label for="subtitleFontSize">字幕字号</label><b id="subtitleFontSizeValue">54px</b></div>
+                    <input type="range" id="subtitleFontSize" min="34" max="80" step="2" value="54" />
+                  </div>
+                  <p class="io-hint">「自动避让」会按头像位置自动摆放；其余位置可自由微调，渲染时同步烧录。</p>
+                </div>
+              </div>
+              <div class="preset-block">
+                <div class="preset-head">
+                  <span class="muted small">布局预设</span>
+                  <button id="presetSave" class="btn tiny ghost" type="button">保存为预设</button>
+                </div>
+                <div class="preset-row">
+                  <select id="presetSelect"><option value="">选择预设</option></select>
+                  <button id="presetApply" class="btn tiny" type="button">套用</button>
+                  <button id="presetDelete" class="btn tiny ghost" type="button">删除</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="card motion-mini-card">
+              <div class="card-head"><span>动效强度</span></div>
+              <div class="segmented" id="motionSeg">
+                <button data-motion="light" type="button">轻</button>
+                <button data-motion="standard" class="active" type="button">标准</button>
+                <button data-motion="strong" type="button">强</button>
+              </div>
+              <div class="muted small motion-note" id="motionNote">位移与弹性适中，适合大多数口播。</div>
+            </div>
+
+            <div class="card material-card">
+              <div class="card-head"><span>素材与章节</span><span class="card-head-tools"><span class="mini-tag" id="materialSummary">0 张 · 0 章</span><a class="btn tiny ghost" href="/layout-review.html" target="_blank" rel="noopener">排版审阅</a></span></div>
+              <div class="material-toolbar">
+                <label class="btn small file-btn">
+                  ＋ 上传图片
+                  <input type="file" id="materialFiles" accept="image/png,image/jpeg,image/webp" multiple hidden />
+                </label>
+                <button id="materialRedetect" class="btn tiny ghost" type="button">按文件名重新分章</button>
+                <span class="muted small">文件名示例：冷气篇_01.jpg、02-冷气篇.jpg；也可以直接把素材拖进章节</span>
+              </div>
+              <div class="material-chapters" id="materialChapters"></div>
+            </div>
+
+            <div class="card">
+              <div class="card-head"><span>AI 分镜</span><span class="mini-tag" id="aiState">未启用</span></div>
+              <label class="switch-row">
+                <input type="checkbox" id="aiEnabled" />
                 <span class="switch"></span>
                 <span>
-                  <b>Kaggle 生成口型数字人</b>
-                  <small>配音完成后，用上方“数字人参考”视频生成对口型片段，再自动进入动画与成片。</small>
+                  <b>启用 AI 分镜</b>
+                  <small>按文案自动切幕、挑版式、给配图检索词；调用失败自动回退规则版</small>
                 </span>
               </label>
-              <div class="two-fields dh-fields" id="dhFields">
-                <div class="field">
-                  <label for="dhVariant">数字人版本</label>
-                  <select id="dhVariant">
-                    <option value="closeup">半身近景</option>
-                    <option value="fullbody">全身</option>
-                    <option value="auto">自动选择</option>
-                  </select>
+              <div class="ai-grid">
+                <div class="field wide">
+                  <label for="aiBaseUrl">接口地址</label>
+                  <input type="text" id="aiBaseUrl" class="mono" placeholder="https://api.openai.com/v1" />
                 </div>
                 <div class="field">
-                  <label for="dhTimeout">等待上限</label>
-                  <select id="dhTimeout">
-                    <option value="60">60 分钟</option>
-                    <option value="120">120 分钟</option>
-                    <option value="180">180 分钟</option>
-                  </select>
+                  <label for="aiModel">模型</label>
+                  <input type="text" id="aiModel" placeholder="gpt-4o-mini" />
+                </div>
+                <div class="field">
+                  <label for="aiKeyEnv">Key 环境变量名（可选）</label>
+                  <input type="text" id="aiKeyEnv" class="mono" placeholder="OPENAI_API_KEY" />
+                </div>
+                <div class="field wide">
+                  <label for="aiApiKey">API Key</label>
+                  <input type="password" id="aiApiKey" class="mono" placeholder="直接粘贴密钥，或留空改用环境变量" autocomplete="off" />
+                </div>
+                <div class="range-field wide">
+                  <div class="range-head"><label for="aiTemperature">温度</label><b id="aiTemperatureValue">0.40</b></div>
+                  <input type="range" id="aiTemperature" min="0" max="1" step="0.05" value="0.4" />
                 </div>
               </div>
-              <p class="io-hint" id="dhHint">选择视频素材后可开启。首次运行需在 Kaggle 完成依赖安装，约 40–55 分钟。</p>
+              <p class="muted small ai-note">兼容 OpenAI 协议的服务都能用：DeepSeek、通义、Ollama 等只需改接口地址与模型名。Key 取环境变量，未设置时回退规则版。</p>
             </div>
-            <div id="avatarFields" class="avatar-fields hidden">
-              <div class="avatar-source">
-                <label class="avatar-upload" for="avatarFile">
-                  <input type="file" id="avatarFile" accept="image/png,image/jpeg,image/webp,video/mp4,video/webm,video/quicktime" hidden />
-                  <span>＋ 上传素材</span>
-                </label>
-                <select id="avatarSelect"><option value="">选择已有素材</option></select>
-              </div>
-              <div class="range-field">
-                <div class="range-head"><label for="avatarWidth">头像占比</label><b id="avatarWidthValue">34%</b></div>
-                <input type="range" id="avatarWidth" min="12" max="70" step="1" value="34" />
-              </div>
-              <div class="avatar-grid-row">
-                <div class="anchor-grid" id="anchorGrid">
-                  <button data-x="0.18" data-y="0.2" type="button" aria-label="左上"></button>
-                  <button data-x="0.5" data-y="0.2" type="button" aria-label="上"></button>
-                  <button data-x="0.82" data-y="0.2" type="button" aria-label="右上"></button>
-                  <button data-x="0.18" data-y="0.5" type="button" aria-label="左"></button>
-                  <button data-x="0.5" data-y="0.5" type="button" aria-label="中"></button>
-                  <button data-x="0.82" data-y="0.5" type="button" aria-label="右"></button>
-                  <button data-x="0.18" data-y="0.78" type="button" aria-label="左下"></button>
-                  <button data-x="0.5" data-y="0.78" type="button" aria-label="下"></button>
-                  <button data-x="0.82" data-y="0.78" type="button" aria-label="右下"></button>
-                </div>
-                <div class="anchor-fields">
-                  <div class="range-field compact">
-                    <div class="range-head"><label for="avatarX">水平</label><b id="avatarXValue">50%</b></div>
-                    <input type="range" id="avatarX" min="0" max="100" step="1" value="50" />
-                  </div>
-                  <div class="range-field compact">
-                    <div class="range-head"><label for="avatarY">垂直</label><b id="avatarYValue">76%</b></div>
-                    <input type="range" id="avatarY" min="0" max="100" step="1" value="76" />
-                  </div>
-                  <div class="range-field compact">
-                    <div class="range-head"><label for="avatarGap">避让间距</label><b id="avatarGapValue">24px</b></div>
-                    <input type="range" id="avatarGap" min="0" max="80" step="4" value="24" />
-                  </div>
-                </div>
-              </div>
-              <div class="two-fields">
-                <div class="field">
-                  <label for="avatarShape">裁切形状</label>
-                  <select id="avatarShape">
-                    <option value="rounded">圆角</option>
-                    <option value="circle">圆形</option>
-                    <option value="ellipse">椭圆</option>
-                    <option value="square">方形</option>
-                    <option value="diamond">菱形</option>
-                    <option value="hexagon">六边形</option>
-                  </select>
-                </div>
-                <div class="field">
-                  <label for="avatarMotion">动效</label>
-                  <select id="avatarMotion">
-                    <option value="float">轻微浮动</option>
-                    <option value="breathe">呼吸缩放</option>
-                    <option value="none">静止</option>
-                  </select>
-                </div>
-              </div>
-              <div class="two-fields border-fields">
-                <div class="range-field compact">
-                  <div class="range-head"><label for="borderWidth">描边粗细</label><b id="borderWidthValue">4px</b></div>
-                  <input type="range" id="borderWidth" min="0" max="24" step="1" value="4" />
-                </div>
-                <div class="field">
-                  <label for="borderColor">描边颜色</label>
-                  <div class="color-field">
-                    <input type="color" id="borderColor" value="#e8a33d" />
-                    <span id="borderColorValue">#E8A33D</span>
-                  </div>
-                </div>
-              </div>
-              <label class="check inline-check"><input type="checkbox" id="frameInput" checked />头像投影</label>
-              <label class="check inline-check"><input type="checkbox" id="avoidInput" checked />文字与字幕自动避让头像</label>
-            </div>
-            <div class="preset-block">
-              <div class="preset-head">
-                <span class="muted small">布局预设</span>
-                <button id="presetSave" class="btn tiny ghost" type="button">保存为预设</button>
-              </div>
-              <div class="preset-row">
-                <select id="presetSelect"><option value="">选择预设</option></select>
-                <button id="presetApply" class="btn tiny" type="button">套用</button>
-                <button id="presetDelete" class="btn tiny ghost" type="button">删除</button>
-              </div>
-            </div>
-          </div>
 
-          <div class="card">
-            <div class="card-head"><span>AI 分镜</span><span class="mini-tag" id="aiState">未启用</span></div>
-            <label class="switch-row">
-              <input type="checkbox" id="aiEnabled" />
-              <span class="switch"></span>
-              <span>
-                <b>启用 AI 分镜</b>
-                <small>按文案自动切幕、挑版式、给配图检索词；调用失败自动回退规则版</small>
-              </span>
-            </label>
-            <div class="ai-grid">
-              <div class="field wide">
-                <label for="aiBaseUrl">接口地址</label>
-                <input type="text" id="aiBaseUrl" class="mono" placeholder="https://api.openai.com/v1" />
+            <div class="motion-lab card">
+              <div class="card-head">
+                <span>AI 动画</span>
+                <span class="mini-tag" id="motionLabState">手动描述或选择预设</span>
               </div>
-              <div class="field">
-                <label for="aiModel">模型</label>
-                <input type="text" id="aiModel" placeholder="gpt-4o-mini" />
+              <div class="motion-stale hidden" id="motionStale"></div>
+              <div class="motion-auto-row">
+                <button id="motionAuto" class="btn" type="button">AI 自动编排全片</button>
+                <button id="promptDebug" class="btn ghost" type="button">查看 AI Prompt</button>
+                <span class="motion-theme" id="motionTheme">AI 会先判断主题，再逐幕分配动效</span>
               </div>
-              <div class="field">
-                <label for="aiKeyEnv">Key 环境变量名（可选）</label>
-                <input type="text" id="aiKeyEnv" class="mono" placeholder="OPENAI_API_KEY" />
+              <div class="motion-lab-grid">
+                <div class="motion-prompt-col">
+                  <label class="field-label" for="motionPrompt">补充要求（自动编排或重排本幕，可留空）</label>
+                  <textarea id="motionPrompt" rows="3" placeholder="留空时 AI 直接读整篇文案判断主题并逐幕编排。也可补充，例如：整体克制一点，数据段要有扫描感，结尾放慢"></textarea>
+                  <div class="motion-chips" id="motionChips"></div>
+                  <div class="motion-actions">
+                    <button id="motionReset" class="btn tiny ghost" type="button">撤销应用</button>
+                    <span class="muted small" id="motionHint">自动编排会给每一幕不同的动效，相邻幕不会重复。</span>
+                  </div>
+                </div>
+                <div class="motion-target-col">
+                  <div class="field">
+                    <label for="motionScene">作用到哪一幕</label>
+                    <select id="motionScene"></select>
+                  </div>
+                  <button id="motionRegenerate" class="btn tiny ghost" type="button">AI 重排本幕</button>
+                  <div class="segmented" id="motionScope">
+                    <button data-scope="scene" class="active" type="button">当前幕</button>
+                    <button data-scope="all" type="button">全部幕</button>
+                  </div>
+                  <button id="motionPreview" class="btn tiny ghost" type="button">渲染真实预览（3 帧）</button>
+                  <div class="motion-current" id="motionCurrent">当前未应用动效</div>
+                </div>
               </div>
-              <div class="field wide">
-                <label for="aiApiKey">API Key</label>
-                <input type="password" id="aiApiKey" class="mono" placeholder="直接粘贴密钥，或留空改用环境变量" autocomplete="off" />
-              </div>
-              <div class="range-field wide">
-                <div class="range-head"><label for="aiTemperature">温度</label><b id="aiTemperatureValue">0.40</b></div>
-                <input type="range" id="aiTemperature" min="0" max="1" step="0.05" value="0.4" />
-              </div>
-            </div>
-            <p class="muted small ai-note">兼容 OpenAI 协议的服务都能用：DeepSeek、通义、Ollama 等只需改接口地址与模型名。Key 取环境变量，未设置时回退规则版。</p>
-          </div>
-        </div>
-
-        <div class="motion-lab card">
-          <div class="card-head">
-            <span>AI 动画</span>
-            <span class="mini-tag" id="motionLabState">手动描述或选择预设</span>
-          </div>
-          <div class="motion-stale hidden" id="motionStale"></div>
-          <div class="motion-auto-row">
-            <button id="motionAuto" class="btn" type="button">AI 自动编排全片</button>
-            <span class="motion-theme" id="motionTheme">AI 会先判断主题，再逐幕分配动效</span>
-          </div>
-          <div class="motion-lab-grid">
-            <div class="motion-prompt-col">
-              <label class="field-label" for="motionPrompt">补充要求（自动编排或重排本幕，可留空）</label>
-              <textarea id="motionPrompt" rows="3" placeholder="留空时 AI 直接读整篇文案判断主题并逐幕编排。也可补充，例如：整体克制一点，数据段要有扫描感，结尾放慢"></textarea>
-              <div class="motion-chips" id="motionChips"></div>
-              <div class="motion-actions">
-                <button id="motionReset" class="btn tiny ghost" type="button">撤销应用</button>
-                <span class="muted small" id="motionHint">自动编排会给每一幕不同的动效，相邻幕不会重复。</span>
-              </div>
-            </div>
-            <div class="motion-target-col">
-              <div class="field">
-                <label for="motionScene">作用到哪一幕</label>
-                <select id="motionScene"></select>
-              </div>
-              <button id="motionRegenerate" class="btn tiny ghost" type="button">AI 重排本幕</button>
-              <div class="segmented" id="motionScope">
-                <button data-scope="scene" class="active" type="button">当前幕</button>
-                <button data-scope="all" type="button">全部幕</button>
-              </div>
-              <button id="motionPreview" class="btn tiny ghost" type="button">渲染真实预览（3 帧）</button>
-              <div class="motion-current" id="motionCurrent">当前未应用动效</div>
+              <div class="motion-plan hidden" id="motionPlan"></div>
+              <div class="motion-candidates" id="motionCandidates"></div>
+              <div class="motion-frames hidden" id="motionFrames"></div>
             </div>
           </div>
-          <div class="motion-plan hidden" id="motionPlan"></div>
-          <div class="motion-candidates" id="motionCandidates"></div>
-          <div class="motion-frames hidden" id="motionFrames"></div>
         </div>
       </section>
 
@@ -651,6 +730,53 @@
   <div class="offline-banner hidden" id="offlineBanner">
     <b>未连接本地控制台服务</b>
     <span>当前为界面预览。启动服务后即可保存配置、生成视频和查看日志。</span>
+  </div>
+
+  <div class="px-drawer hidden" id="promptDrawer" aria-hidden="true">
+    <div class="px-backdrop" id="pxBackdrop"></div>
+    <aside class="px-panel" role="dialog" aria-modal="true" aria-labelledby="pxTitle">
+      <header class="px-head">
+        <div>
+          <div class="eyebrow">DEBUG / PROMPT</div>
+          <h2 id="pxTitle">发给 AI 的分镜与动效 Prompt</h2>
+          <p class="muted small">Remotion 只按指令渲染；下面是发给 AI 的分镜与动效指令。打开即按当前文案、素材与分镜现场组装，不调用模型、不生成预览。</p>
+        </div>
+        <div class="px-head-tools">
+          <a class="btn tiny ghost" href="/admin" target="_blank" rel="noopener">编辑公共规则</a>
+          <button class="btn tiny ghost" id="pxRefresh" type="button">刷新</button>
+          <button class="px-close" id="pxClose" type="button" aria-label="关闭">×</button>
+        </div>
+      </header>
+      <div class="px-meta" id="pxMeta"></div>
+      <div class="px-tabs" id="pxTabs">
+        <button data-px="storyboard" class="active" type="button">分镜</button>
+        <button data-px="motion" type="button">全片动效</button>
+        <button data-px="scene" type="button">单幕动效</button>
+      </div>
+      <div class="px-body">
+        <div class="px-scene-row hidden" id="pxSceneRow">
+          <label for="pxScene">查看哪一幕</label>
+          <select id="pxScene"></select>
+        </div>
+        <p class="px-note hidden" id="pxNote"></p>
+        <div class="px-params" id="pxParams"></div>
+        <section class="px-block">
+          <div class="px-block-head"><span>系统规则</span><span class="px-count" id="pxSystemCount"></span></div>
+          <pre class="px-pre" id="pxSystem"></pre>
+        </section>
+        <section class="px-block">
+          <div class="px-block-head"><span>请求内容</span><span class="px-count" id="pxUserCount"></span></div>
+          <pre class="px-pre" id="pxUser"></pre>
+        </section>
+      </div>
+      <footer class="px-foot">
+        <span class="muted small" id="pxFootNote"></span>
+        <div class="px-foot-actions">
+          <button class="btn tiny ghost" id="pxCopy" type="button">复制</button>
+          <button class="btn tiny ghost" id="pxDownload" type="button">下载 .txt</button>
+        </div>
+      </footer>
+    </aside>
   </div>
 
   <div class="toasts" id="toasts" aria-live="polite"></div>

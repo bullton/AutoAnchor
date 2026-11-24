@@ -10,7 +10,7 @@
     "allowSyntheticDefaultImports": true,
     "forceConsistentCasingInFileNames": true,
     "noEmit": true,
-    "lib": ["DOM", "ES2020"]
+    "lib": ["DOM", "ES2020", "ES2022.Intl"]
   },
   "include": ["src"]
 }

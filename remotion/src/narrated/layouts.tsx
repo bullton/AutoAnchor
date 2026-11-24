@@ -1,6 +1,7 @@
 import React from "react";
 import { AbsoluteFill, interpolate, staticFile, useCurrentFrame, useVideoConfig } from "remotion";
 import { useStyle } from "../components/StyleContext";
+import { bodyWrapStyle, useLayout } from "../components/LayoutContext";
 import type { SceneData } from "../types";
 import { countUp, cue, fadeIn, fadeSlideLeft, fadeSlideRight, fadeSlideUp } from "./motion";
 import {
@@ -15,18 +16,18 @@ import {
   StatCard,
   TitleBar,
 } from "./parts";
-import { SAFE_BOTTOM, SIDE, TEXT_ANCHOR, TITLE_H, WIDTH } from "./tokens";
+import { SAFE_BOTTOM, SIDE, WIDTH } from "./tokens";
 import { useSafeBox } from "./layoutBox";
 
-const strip = (t: string) => t.replace(/[“�?]/g, "").replace(/[。！�??�?]+$/g, "").trim();
+const strip = (t: string) => t.replace(/[“”"]/g, "").replace(/[。！？!?]+$/g, "").trim();
 
-/** 中文按字数收敛字号，避免最后一行只剩一个字 */
+/** 涓枃鎸夊瓧鏁版敹鏁涘瓧鍙凤紝閬垮厤鏈€鍚庝竴琛屽彧鍓╀竴涓瓧 */
 const fitTitle = (text: string, max: number, avail = WIDTH - SIDE * 2) => {
   const n = Math.max(4, strip(text).length);
   return Math.min(max, Math.floor(avail / (n * 0.94)));
 };
 
-/** 长句只在逗号/顿号处断两行，避免最后一行只剩一两个�?*/
+/** 闀垮彞鍙湪閫楀彿/椤垮彿澶勬柇涓よ锛岄伩鍏嶆渶鍚庝竴琛屽彧鍓╀竴涓や釜锟?*/
 const twoLine = (text: string) => {
   const t = strip(text);
   if (t.length <= 14) return t;
@@ -34,7 +35,7 @@ const twoLine = (text: string) => {
   let best = -1;
   for (let d = 0; d <= 6; d += 1) {
     for (const i of [mid - d, mid + d]) {
-      if (i > 2 && i < t.length - 2 && /[�?、；;�?]/.test(t[i])) {
+      if (i > 2 && i < t.length - 2 && /[，、；;。]/.test(t[i])) {
         best = i;
         break;
       }
@@ -94,7 +95,6 @@ const ghostProps = (scene: SceneData) => ({
 });
 
 export const HeroLayout: React.FC<{ scene: SceneData }> = ({ scene }) => {
-  const box = useSafeBox();
   const { frame } = useSceneTiming(scene);
   const { palette } = useStyle();
   const items = (scene.bullets.length ? scene.bullets : scene.lines).slice(0, 3);
@@ -102,33 +102,15 @@ export const HeroLayout: React.FC<{ scene: SceneData }> = ({ scene }) => {
     <>
       <PhotoLayer
         src={scene.photo}
-        variant="hero"
+        variant="backdrop"
         duration={scene.durationInFrames}
         focus={scene.photoFocus}
         aspect={scene.photoAspect}
         dim={0.16}
       />
-      <div
-        style={{
-          position: "absolute",
-          left: 0,
-          right: 0,
-          top: TITLE_H,
-          bottom: SAFE_BOTTOM - 80,
-          background: `radial-gradient(ellipse 76% 44% at 50% 46%, ${palette.bg}C4 0%, ${palette.bg}74 55%, transparent 100%)`,
-        }}
-      />
       <TitleBar kicker={scene.kicker} title={scene.title} overlay={Boolean(scene.photo)} />
-      <AbsoluteFill
-        style={{
-          padding: `${Math.max(TEXT_ANCHOR, box.top)}px ${box.left + 6}px ${Math.max(box.contentBottom, box.bottom)}px`,
-          display: "flex",
-          flexDirection: "column",
-          justifyContent: "center",
-          alignItems: "center",
-        }}
-      >
-        <div style={{ width: "100%", display: "flex", flexDirection: "column", gap: 26 }}>
+      <Body scene={scene}>
+        <div style={{ display: "flex", flexDirection: "column", width: "100%" }}>
           {items.map((text, i) => {
             const appear = fadeIn(frame, 16 + i * 10, 16);
             return (
@@ -136,21 +118,22 @@ export const HeroLayout: React.FC<{ scene: SceneData }> = ({ scene }) => {
                 key={text}
                 style={{
                   display: "flex",
-                  gap: 26,
-                  alignItems: "center",
-                  padding: "16px 0",
+                  gap: 12,
+                  alignItems: "flex-start",
+                  marginTop: 8,
                   opacity: cue(appear, 0.55),
                   transform: `translateY(${(1 - appear) * 16}px)`,
                 }}
               >
-                <Marker active={i === 0} />
+                <Marker active={i === 0} marginTop={14} />
                 <div
                   style={{
-                    fontSize: 46,
-                    lineHeight: 1.45,
+                    fontSize: 31,
+                    lineHeight: 1.5,
                     fontWeight: i === 0 ? 700 : 500,
                     color: palette.ink,
-                    textShadow: "0 2px 20px rgba(0,0,0,0.45)",
+                    opacity: i === 0 ? 1 : 0.86,
+                    textShadow: "0 2px 18px rgba(0,0,0,0.7)",
                   }}
                 >
                   {text}
@@ -159,20 +142,19 @@ export const HeroLayout: React.FC<{ scene: SceneData }> = ({ scene }) => {
             );
           })}
         </div>
-      </AbsoluteFill>
+      </Body>
     </>
   );
 };
 
 export const BandLayout: React.FC<{ scene: SceneData }> = ({ scene }) => {
-  const box = useSafeBox();
   const { frame, cueAt } = useSceneTiming(scene);
   const { palette } = useStyle();
   return (
     <>
       <PhotoLayer
         src={scene.photo}
-        variant="band"
+        variant="backdrop"
         duration={scene.durationInFrames}
         focus={scene.photoFocus}
         aspect={scene.photoAspect}
@@ -180,45 +162,38 @@ export const BandLayout: React.FC<{ scene: SceneData }> = ({ scene }) => {
         {...ghostProps(scene)}
       />
       <TitleBar kicker={scene.kicker} title={scene.title} overlay={Boolean(scene.photo)} />
-      <Body style={{ justifyContent: "center" }}>
-        <div style={{ width: "100%" }}>
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              width: "100%",
-            }}
-          >
-            {scene.bullets.slice(0, 3).map((text, i) => {
-              const appear = fadeIn(frame, cueAt(i, 26 + i * 8), 16);
-              return (
+      <Body scene={scene}>
+        <div style={{ display: "flex", flexDirection: "column", width: "100%" }}>
+          {scene.bullets.slice(0, 3).map((text, i) => {
+            const appear = fadeIn(frame, cueAt(i, 26 + i * 8), 16);
+            return (
+              <div
+                key={text}
+                style={{
+                  display: "flex",
+                  gap: 12,
+                  alignItems: "flex-start",
+                  marginTop: 8,
+                  opacity: cue(appear, 0.55),
+                  transform: `translateY(${(1 - appear) * 12}px)`,
+                }}
+              >
+                <Marker active={i === 0} marginTop={14} />
                 <div
-                  key={text}
                   style={{
-                    display: "flex",
-                    gap: 22,
-                    alignItems: "flex-start",
-                    padding: "30px 0",
-                    opacity: cue(appear, 0.55),
-                    transform: `translateY(${(1 - appear) * 12}px)`,
+                    fontSize: 31,
+                    lineHeight: 1.5,
+                    fontWeight: i === 0 ? 700 : 500,
+                    color: palette.ink,
+                    opacity: i === 0 ? 1 : 0.86,
+                    textShadow: "0 2px 18px rgba(0,0,0,0.7)",
                   }}
                 >
-                  <Marker active={i === 0} marginTop={27} width={34} />
-                  <div
-                    style={{
-                      fontSize: 46,
-                      lineHeight: 1.5,
-                      fontWeight: i === 0 ? 700 : 500,
-                      color: palette.ink,
-                      textShadow: "0 2px 20px rgba(0,0,0,0.45)",
-                    }}
-                  >
-                    {text}
-                  </div>
+                  {text}
                 </div>
-              );
-            })}
-          </div>
+              </div>
+            );
+          })}
         </div>
       </Body>
     </>
@@ -226,7 +201,6 @@ export const BandLayout: React.FC<{ scene: SceneData }> = ({ scene }) => {
 };
 
 export const NumberLayout: React.FC<{ scene: SceneData }> = ({ scene }) => {
-  const box = useSafeBox();
   const { frame, fps, cueAt } = useSceneTiming(scene);
   const { palette, look } = useStyle();
   const target = Number.parseFloat(String(scene.number || "0").replace(/[^\d.]/g, "")) || 0;
@@ -244,7 +218,7 @@ export const NumberLayout: React.FC<{ scene: SceneData }> = ({ scene }) => {
       {scene.photo ? (
         <PhotoLayer
           src={scene.photo}
-          variant="band"
+          variant="backdrop"
           duration={scene.durationInFrames}
           focus={scene.photoFocus}
         aspect={scene.photoAspect}
@@ -255,83 +229,72 @@ export const NumberLayout: React.FC<{ scene: SceneData }> = ({ scene }) => {
         <PlotGrid duration={scene.durationInFrames} />
       )}
       <TitleBar kicker={scene.kicker} title={scene.title} overlay={Boolean(scene.photo)} />
-      <Body style={{ justifyContent: "center" }}>
-        {scene.tag || scene.barTitle ? (
-          <div
-            style={{
-              fontSize: 30,
-              letterSpacing: look.kickerTracking,
-              textTransform: look.kickerTransform,
-              color: palette.inkDim,
-              marginBottom: 16,
-              opacity: fadeIn(frame, start - 8, 14),
-            }}
-          >
-            {scene.tag || scene.barTitle}
-          </div>
-        ) : null}
-        <div style={{ display: "flex", alignItems: "baseline", gap: 12, fontVariantNumeric: "tabular-nums" }}>
-          <div
-            style={{
-              fontFamily: look.displayFont,
-              fontSize: 224,
-              lineHeight: 1,
-              fontWeight: look.titleWeight,
-              color: palette.accent,
-              letterSpacing: look.titleTracking - 2,
-            }}
-          >
-            {scene.number && /[^\d.]/.test(scene.number) ? scene.number : value}
-          </div>
-          {scene.unit ? (
-            <div style={{ fontFamily: look.displayFont, fontSize: 70, fontWeight: 700, color: palette.ink }}>
-              {scene.unit}
+      <Body scene={scene}>
+        <div style={{ display: "flex", flexDirection: "column", width: "100%" }}>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginTop: 10, fontVariantNumeric: "tabular-nums" }}>
+            <div
+              style={{
+                fontFamily: look.displayFont,
+                fontSize: 150,
+                lineHeight: 1,
+                fontWeight: look.titleWeight,
+                color: palette.accent,
+                letterSpacing: look.titleTracking - 2,
+                textShadow: "0 4px 26px rgba(0,0,0,0.55)",
+              }}
+            >
+              {scene.number && /[^\d.]/.test(scene.number) ? scene.number : value}
             </div>
-          ) : null}
-        </div>
-        <div
-          style={{
-            marginTop: 18,
-            width: 600,
-            height: 6,
-            borderRadius: look.radius > 0 ? 3 : 0,
-            background: palette.line,
-            overflow: "hidden",
-          }}
-        >
-          <div style={{ width: `${ring * 100}%`, height: "100%", background: palette.accent }} />
-        </div>
-        {caption ? (
-          <div style={{ marginTop: 30, fontSize: 42, color: palette.ink, opacity: 0.92 }}>{caption}</div>
-        ) : null}
-        <div
-          style={{
-            marginTop: 44,
-            display: "flex",
-            flexDirection: "column",
-            gap: 20,
-            width: "100%",
-            alignItems: "center",
-          }}
-        >
-          {(caption ? scene.bullets.slice(1) : scene.bullets).slice(0, 3).map((text, i) => {
-            const appear = fadeIn(frame, cueAt(i + 1, 40), 18);
-            return (
-              <div
-                key={text}
-                style={{
-                  opacity: cue(appear, 0.52),
-                  fontSize: 41,
-                  lineHeight: 1.5,
-                  color: palette.ink,
-                  textAlign: "center",
-                  maxWidth: 860,
-                }}
-              >
-                {text}
+            {scene.unit ? (
+              <div style={{ fontFamily: look.displayFont, fontSize: 50, fontWeight: 700, color: palette.ink, textShadow: "0 3px 20px rgba(0,0,0,0.55)" }}>
+                {scene.unit}
               </div>
-            );
-          })}
+            ) : null}
+          </div>
+          <div
+            style={{
+              marginTop: 14,
+              width: "100%",
+              height: 5,
+              borderRadius: look.radius > 0 ? 3 : 0,
+              background: palette.line,
+              overflow: "hidden",
+            }}
+          >
+            <div style={{ width: `${ring * 100}%`, height: "100%", background: palette.accent }} />
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 12, width: "100%", marginTop: 18 }}>
+            {(caption ? [caption, ...scene.bullets.slice(1)] : scene.bullets).slice(0, 3).map((text, i) => {
+              const appear = fadeIn(frame, cueAt(i + 1, 40), 18);
+              return (
+                <div
+                  key={text}
+                  style={{
+                    display: "flex",
+                    gap: 12,
+                    alignItems: "flex-start",
+                    marginTop: 8,
+                    opacity: cue(appear, 0.55),
+                    transform: `translateY(${(1 - appear) * 12}px)`,
+                  }}
+                >
+                  <Marker active={i === 0} marginTop={14} />
+                  <div
+                    style={{
+                      fontSize: 31,
+                      lineHeight: 1.5,
+                      fontWeight: i === 0 ? 700 : 500,
+                      color: palette.ink,
+                      opacity: i === 0 ? 1 : 0.86,
+                      textShadow: "0 2px 18px rgba(0,0,0,0.7)",
+                    }}
+                  >
+                    {text}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
       </Body>
     </>
@@ -341,7 +304,7 @@ export const NumberLayout: React.FC<{ scene: SceneData }> = ({ scene }) => {
 const parsePercents = (scene: SceneData) => {
   const rows: { label: string; value: number; text: string }[] = [];
   for (const line of scene.lines) {
-    for (const clause of line.split(/[�?、；;�?]/)) {
+    for (const clause of line.split(/[，、；;。]/)) {
       const m = clause.match(/(\d+(?:\.\d+)?)\s*%/);
       if (!m) continue;
       const value = Number.parseFloat(m[1]);
@@ -363,7 +326,7 @@ export const BarsLayout: React.FC<{ scene: SceneData }> = ({ scene }) => {
     <>
       <PhotoLayer
         src={scene.photo}
-        variant="band"
+        variant="backdrop"
         duration={scene.durationInFrames}
         focus={scene.photoFocus}
         aspect={scene.photoAspect}
@@ -371,8 +334,8 @@ export const BarsLayout: React.FC<{ scene: SceneData }> = ({ scene }) => {
         {...ghostProps(scene)}
       />
       <TitleBar kicker={scene.kicker} title={scene.title} overlay={Boolean(scene.photo)} />
-      <Body style={{ justifyContent: "center" }}>
-        <div style={{ marginTop: 0, width: "100%" }}>
+      <Body scene={scene}>
+        <div style={{ marginTop: 0, width: 560 }}>
           {rows.map((row, i) => (
             <BarRow
               key={`${row.label}-${i}`}
@@ -391,8 +354,6 @@ export const BarsLayout: React.FC<{ scene: SceneData }> = ({ scene }) => {
 };
 
 export const CompareLayout: React.FC<{ scene: SceneData }> = ({ scene }) => {
-  const box = useSafeBox();
-  const stacked = box.width < 780;
   const { frame, spread } = useSceneTiming(scene);
   const { palette, look } = useStyle();
   const items = scene.bullets.slice(0, 2);
@@ -401,7 +362,7 @@ export const CompareLayout: React.FC<{ scene: SceneData }> = ({ scene }) => {
     <>
       <PhotoLayer
         src={scene.photo}
-        variant="band"
+        variant="backdrop"
         duration={scene.durationInFrames}
         focus={scene.photoFocus}
         aspect={scene.photoAspect}
@@ -409,8 +370,8 @@ export const CompareLayout: React.FC<{ scene: SceneData }> = ({ scene }) => {
         {...ghostProps(scene)}
       />
       <TitleBar kicker={scene.kicker} title={scene.title} overlay={Boolean(scene.photo)} />
-      <Body style={{ justifyContent: "center" }}>
-        <div style={{ display: "flex", gap: 18, width: "100%", marginTop: 0, flexDirection: stacked ? "column" : "row" }}>
+      <Body scene={scene}>
+        <div style={{ display: "flex", gap: 14, marginTop: 0, flexDirection: "column" }}>
           {sides.map((text, i) => {
             const anim = i === 0 ? fadeSlideLeft(frame, spread(i, 2), 20) : fadeSlideRight(frame, spread(i, 2), 20);
             return (
@@ -418,18 +379,11 @@ export const CompareLayout: React.FC<{ scene: SceneData }> = ({ scene }) => {
                 key={`${text}-${i}`}
                 style={{
                   ...anim,
-                  flex: 1,
-                  minWidth: 0,
-                  minHeight: stacked ? 190 : 300,
-                  borderRadius: look.radius,
-                  padding: "28px 22px",
-                  background: i === 0 ? palette.bgSoft : `${palette.bg}EB`,
-                  boxShadow: i === 0 ? undefined : `inset 0 0 0 999px ${palette.accentSoft}`,
-                  border: `1.5px solid ${i === 0 ? palette.line : `${palette.accent}66`}`,
+                  padding: "6px 0 6px 18px",
+                  borderLeft: `2px solid ${i === 0 ? palette.line : `${palette.accent}99`}`,
                   display: "flex",
                   flexDirection: "column",
-                  justifyContent: "center",
-                  gap: 16,
+                  gap: 4,
                 }}
               >
                 <div
@@ -443,7 +397,7 @@ export const CompareLayout: React.FC<{ scene: SceneData }> = ({ scene }) => {
                 >
                   {i === 0 ? "A" : "B"}
                 </div>
-                <div style={{ fontSize: 30, lineHeight: 1.45, color: palette.ink, fontWeight: 600, overflowWrap: "anywhere" }}>
+                <div style={{ fontSize: 31, lineHeight: 1.5, color: palette.ink, fontWeight: 600, opacity: i === 0 ? 0.86 : 1 }}>
                   {text}
                 </div>
               </div>
@@ -464,7 +418,7 @@ export const ListLayout: React.FC<{ scene: SceneData }> = ({ scene }) => {
       {scene.photo ? (
         <PhotoLayer
           src={scene.photo}
-          variant="band"
+          variant="backdrop"
           duration={scene.durationInFrames}
           focus={scene.photoFocus}
         aspect={scene.photoAspect}
@@ -475,8 +429,8 @@ export const ListLayout: React.FC<{ scene: SceneData }> = ({ scene }) => {
         <PlotGrid duration={scene.durationInFrames} />
       )}
       <TitleBar kicker={scene.kicker} title={scene.title} overlay={Boolean(scene.photo)} />
-      <Body style={{ justifyContent: "center" }}>
-        <div style={{ width: "100%", display: "flex", flexDirection: "column", gap: 30 }}>
+      <Body scene={scene}>
+        <div style={{ width: "100%", display: "flex", flexDirection: "column" }}>
           {items.map((text, i) => {
             const appear = fadeIn(frame, cueAt(i, 24 + i * 6), 16);
             return (
@@ -484,20 +438,22 @@ export const ListLayout: React.FC<{ scene: SceneData }> = ({ scene }) => {
                 key={`${text}-${i}`}
                 style={{
                   display: "flex",
-                  gap: 26,
-                  alignItems: "center",
-                  padding: "8px 0",
+                  gap: 12,
+                  alignItems: "flex-start",
+                  marginTop: 8,
                   opacity: cue(appear, 0.55),
                   transform: `translateY(${(1 - appear) * 14}px)`,
                 }}
               >
-                <Marker active={i === 0} marginTop={27} />
+                <Marker active={i === 0} marginTop={14} />
                 <div
                   style={{
-                    fontSize: 44,
+                    fontSize: 31,
                     lineHeight: 1.5,
+                    fontWeight: i === 0 ? 700 : 500,
                     color: palette.ink,
-                    textShadow: "0 2px 20px rgba(0,0,0,0.45)",
+                    opacity: i === 0 ? 1 : 0.86,
+                    textShadow: "0 2px 18px rgba(0,0,0,0.7)",
                   }}
                 >
                   {text}
@@ -519,7 +475,7 @@ export const AbstractLayout: React.FC<{ scene: SceneData }> = ({ scene }) => {
       {scene.photo ? (
         <PhotoLayer
           src={scene.photo}
-          variant="band"
+          variant="backdrop"
           duration={scene.durationInFrames}
           focus={scene.photoFocus}
         aspect={scene.photoAspect}
@@ -530,15 +486,13 @@ export const AbstractLayout: React.FC<{ scene: SceneData }> = ({ scene }) => {
         <PlotGrid duration={scene.durationInFrames} />
       )}
       <TitleBar kicker={scene.kicker} title={scene.title} overlay={Boolean(scene.photo)} />
-      <Body style={{ justifyContent: "center" }}>
+      <Body scene={scene}>
         <div
           style={{
             marginTop: 0,
             display: "flex",
             flexDirection: "column",
-            gap: 22,
             width: "100%",
-            alignItems: "center",
           }}
         >
           {scene.bullets.slice(0, 3).map((text, i) => {
@@ -547,15 +501,27 @@ export const AbstractLayout: React.FC<{ scene: SceneData }> = ({ scene }) => {
               <div
                 key={text}
                 style={{
-                  opacity: cue(appear, 0.52),
-                  fontSize: 31,
-                  lineHeight: 1.6,
-                  textAlign: "center",
-                  color: palette.ink,
-                  maxWidth: 880,
+                  display: "flex",
+                  gap: 12,
+                  alignItems: "flex-start",
+                  marginTop: 8,
+                  opacity: cue(appear, 0.55),
+                  transform: `translateY(${(1 - appear) * 14}px)`,
                 }}
               >
-                {text}
+                <Marker active={i === 0} marginTop={14} />
+                <div
+                  style={{
+                    fontSize: 31,
+                    lineHeight: 1.5,
+                    fontWeight: i === 0 ? 700 : 500,
+                    color: palette.ink,
+                    opacity: i === 0 ? 1 : 0.86,
+                    textShadow: "0 2px 18px rgba(0,0,0,0.7)",
+                  }}
+                >
+                  {text}
+                </div>
               </div>
             );
           })}
@@ -566,95 +532,83 @@ export const AbstractLayout: React.FC<{ scene: SceneData }> = ({ scene }) => {
 };
 
 export const ClosingLayout: React.FC<{ scene: SceneData }> = ({ scene }) => {
-  const box = useSafeBox();
   const { frame, cueAt } = useSceneTiming(scene);
   const { palette, look } = useStyle();
-  const ctaStyle: React.CSSProperties =
-    look.cta === "pill"
-      ? { borderRadius: 999, background: palette.accent, color: palette.bg, boxShadow: `0 10px 30px ${palette.accent}33` }
-      : look.cta === "underline"
-        ? { borderRadius: 0, background: "transparent", color: palette.accent, borderBottom: `5px solid ${palette.accent}` }
-        : { borderRadius: look.radius, background: palette.accent, color: palette.bg };
+  const ctaStyle: React.CSSProperties = {
+    borderRadius: 0,
+    background: "transparent",
+    color: palette.accent,
+    borderBottom: `3px solid ${palette.accent}66`,
+  };
   const cta = strip(scene.lines[scene.lines.length - 1] || "");
   const credits = (scene as SceneData & { credits?: string }).credits || "";
   return (
     <>
       <PhotoLayer
         src={scene.photo}
-        variant="hero"
+        variant="backdrop"
         duration={scene.durationInFrames}
         focus={scene.photoFocus}
         aspect={scene.photoAspect}
         dim={0.42}
       />
-      <div
-        style={{
-          position: "absolute",
-          inset: 0,
-          background: `linear-gradient(180deg, ${palette.bg}66 0%, ${palette.bg}D9 38%, ${palette.bg}F2 62%, ${palette.bg}F2 100%)`,
-        }}
-      />
       <TitleBar kicker={scene.kicker} title={scene.title} overlay={Boolean(scene.photo)} />
-      <AbsoluteFill
-        style={{
-          padding: `${Math.max(TEXT_ANCHOR, box.top)}px ${box.left}px ${Math.max(box.contentBottom, box.bottom)}px`,
-          display: "flex",
-          flexDirection: "column",
-          justifyContent: "center",
-          alignItems: "center",
-        }}
-      >
-        <div
-          style={{
-            marginTop: 0,
-            display: "flex",
-            flexDirection: "column",
-            gap: 24,
-            width: "auto",
-            maxWidth: 940,
-            alignItems: "center",
-          }}
-        >
+      <Body scene={scene}>
+        <div style={{ display: "flex", flexDirection: "column", width: "100%" }}>
           {scene.bullets.slice(0, 3).map((text, i) => {
             const appear = fadeIn(frame, cueAt(i) + 10, 16);
             return (
               <div
                 key={text}
                 style={{
+                  display: "flex",
+                  gap: 12,
+                  alignItems: "flex-start",
+                  marginTop: 8,
                   opacity: cue(appear, 0.55),
-                  fontSize: 40,
-                  lineHeight: 1.5,
-                  color: palette.ink,
-                  maxWidth: 900,
-                  textAlign: "center",
-                  textShadow: "0 2px 20px rgba(0,0,0,0.45)",
+                  transform: `translateY(${(1 - appear) * 14}px)`,
                 }}
               >
-                {text}
+                <Marker active={i === 0} marginTop={14} />
+                <div
+                  style={{
+                    fontSize: 31,
+                    lineHeight: 1.5,
+                    fontWeight: i === 0 ? 700 : 500,
+                    color: palette.ink,
+                    opacity: i === 0 ? 1 : 0.86,
+                    textShadow: "0 2px 18px rgba(0,0,0,0.7)",
+                  }}
+                >
+                  {text}
+                </div>
               </div>
             );
           })}
+          {cta ? (
+            <div
+              style={{
+                ...fadeSlideUp(frame, 46, 20, 20),
+                ...ctaStyle,
+                marginTop: 28,
+                padding: look.cta === "underline" ? "10px 6px 14px" : look.cta === "block" ? "20px 34px" : "16px 30px",
+                fontFamily: look.displayFont,
+                fontSize: 26,
+                lineHeight: 1.35,
+                fontWeight: look.cta === "underline" ? look.titleWeight : 700,
+                letterSpacing: look.kickerTracking,
+                textTransform: look.kickerTransform,
+                textAlign: "center",
+                alignSelf: "flex-start",
+                maxWidth: 520,
+              }}
+            >
+              {cta}
+            </div>
+          ) : null}
         </div>
-        {cta ? (
-          <div
-            style={{
-              ...fadeSlideUp(frame, 46, 20, 20),
-              ...ctaStyle,
-              marginTop: 58,
-              padding: look.cta === "underline" ? "10px 6px 14px" : look.cta === "block" ? "26px 56px" : "24px 52px",
-              fontFamily: look.displayFont,
-              fontSize: 36,
-              fontWeight: look.cta === "underline" ? look.titleWeight : 700,
-              letterSpacing: look.kickerTracking,
-              textTransform: look.kickerTransform,
-              textAlign: "center",
-            }}
-          >
-            {cta}
-          </div>
-        ) : null}
-        <Credit text={credits} appear={fadeIn(frame, 60, 20)} />
-      </AbsoluteFill>
+      </Body>
+      <Credit text={credits} appear={fadeIn(frame, 60, 20)} />
     </>
   );
 };
@@ -675,6 +629,7 @@ export const MaterialLayout: React.FC<{ scene: SceneData }> = ({ scene }) => {
   const { frame, cueAt } = useSceneTiming(scene);
   const { palette } = useStyle();
   const box = useSafeBox();
+  const layout = useLayout();
   const { height: canvasH } = useVideoConfig();
   const items = scene.bullets.slice(0, 3);
   const style = scene.layoutStyle || {};
@@ -734,17 +689,6 @@ export const MaterialLayout: React.FC<{ scene: SceneData }> = ({ scene }) => {
           background: `linear-gradient(180deg, ${palette.bg}00 0%, ${palette.bg}00 38%, ${palette.bg}33 52%, ${palette.bg}AA 68%, ${palette.bg}E6 84%, ${palette.bg}F2 100%)`,
         }}
       />
-      <div
-        style={{
-          position: "absolute",
-          left: Math.max(0, contentLeft - 28),
-          right: Math.max(0, WIDTH - contentLeft - contentWidth - 28),
-          top: Math.max(0, contentTop - 150),
-          height: 430,
-          background: `linear-gradient(180deg, ${palette.bg}00 0%, ${palette.bg}8C 24%, ${palette.bg}B8 62%, ${palette.bg}00 100%)`,
-          opacity: 0.9,
-        }}
-      />
       <TitleBar kicker={scene.kicker} title={scene.title} overlay={Boolean(scene.photo)} />
       <div
         style={{
@@ -759,6 +703,7 @@ export const MaterialLayout: React.FC<{ scene: SceneData }> = ({ scene }) => {
           textAlign: contentAlign,
         }}
       >
+        <div style={{ ...bodyWrapStyle(layout.body), display: "flex", flexDirection: "column", alignItems: justify, gap: 14 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <div
             style={{
@@ -805,6 +750,7 @@ export const MaterialLayout: React.FC<{ scene: SceneData }> = ({ scene }) => {
             );
           })}
         </div>
+        </div>
       </div>
     </AbsoluteFill>
   );
@@ -820,3 +766,4 @@ export const SCENE_RENDERERS: Record<string, React.FC<{ scene: SceneData }>> = {
   abstract: AbstractLayout,
   closing: ClosingLayout,
 };
+

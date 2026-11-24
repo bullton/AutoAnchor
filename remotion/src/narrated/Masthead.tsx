@@ -2,44 +2,16 @@ import React from "react";
 import { AbsoluteFill } from "remotion";
 import { useStyle } from "../components/StyleContext";
 import { SIDE } from "./tokens";
+import { splitTitleLines, textUnits } from "./titleBreak";
 
 const MASTHEAD_WIDTH = 1080 - SIDE * 2 - 36;
-
-function textUnits(text: string): number {
-  let units = 0;
-  for (const ch of Array.from(String(text || ""))) {
-    const code = ch.codePointAt(0) ?? 0;
-    if (code >= 0x2e80) units += 1;
-    else if (/[A-Za-z0-9]/.test(ch)) units += 0.56;
-    else if (ch === " ") units += 0.32;
-    else units += 0.5;
-  }
-  return units || 1;
-}
-
-function splitTitle(chars: string[]): number {
-  if (chars.length <= 3) return chars.length;
-  const total = textUnits(chars.join(""));
-  let best = Math.ceil(chars.length / 2);
-  let bestDiff = Infinity;
-  for (let i = 1; i < chars.length; i += 1) {
-    const diff = Math.abs(total - textUnits(chars.slice(0, i).join("")) * 2);
-    if (diff <= bestDiff) {
-      bestDiff = diff;
-      best = i;
-    }
-  }
-  return best;
-}
 
 export const Masthead: React.FC<{ title?: string; tagline?: string }> = ({ title, tagline }) => {
   const { palette, look } = useStyle();
   const seriesTitle = String(title || "").trim();
   const seriesTagline = String(tagline || "").trim();
   if (!seriesTitle) return null;
-  const chars = Array.from(seriesTitle);
-  const splitAt = splitTitle(chars);
-  const lines = [chars.slice(0, splitAt).join(""), chars.slice(splitAt).join("")].filter(Boolean);
+  const lines = splitTitleLines(seriesTitle);
   const maxChars = Math.max(...lines.map((line) => Array.from(line).length));
   const maxUnits = Math.max(...lines.map((line) => textUnits(line)));
   const size = Math.max(64, Math.min(140, Math.floor((MASTHEAD_WIDTH - maxChars) / (maxUnits * 1.03))));

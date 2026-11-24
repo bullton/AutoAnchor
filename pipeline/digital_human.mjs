@@ -97,6 +97,9 @@ if (local.kaggleBin && fs.existsSync(local.kaggleBin)) {
   env.PATH = `${path.dirname(local.kaggleBin)}${path.delimiter}${env.PATH || ""}`;
 }
 
+const queueTimeoutMin = Math.max(0, Number(arg("queue-timeout-min", kaggle.queueTimeoutMin ?? 3)) || 0);
+const queueRetries = Math.max(1, Number(arg("queue-retries", kaggle.queueRetries ?? 3)) || 3);
+
 const args = [
   path.join(ROOT, "pipeline", "digital_human", "run.py"),
   "--video", reference,
@@ -105,6 +108,8 @@ const args = [
   "--output-dir", runDir,
   "--json-out", manifestFile,
   "--timeout", String(Math.max(10, Number(arg("timeout", kaggle.timeoutMin || 120)) || 120)),
+  "--queue-timeout-min", String(queueTimeoutMin),
+  "--queue-retries", String(queueRetries),
 ];
 if (variant !== "auto") args.push("--only", variant);
 if (kaggle.dataset) args.push("--dataset", String(kaggle.dataset));
